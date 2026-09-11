@@ -1,0 +1,29 @@
+Camden's Pain(t)  Version 1.0  -  09/11/2026
+=============================================
+
+Sprint 1 submission for CS 250.
+
+Source code:
+  GitHub repo:  https://github.com/CamdenGoddard/Paint
+  Tag / release:  v0.1.0  (https://github.com/CamdenGoddard/Paint/releases/tag/v0.1.0)
+  This tag matches the code uploaded in the sprint 1 zip.
+
+New features:
+  * Open an image from a file and display it.
+  * Menu bar with a File menu.
+  * Save - writes the image back to the file it was opened from.
+  * Save As - pick a new file name/location; saves there as a PNG.
+  * Close Image - clears the picture without exiting the program.
+  * Exit.
+
+Known issues:
+  * There are no drawing tools yet, so Save / Save As just write the same
+    picture back out. Actual drawing is planned for the next sprint.
+  * Save As only writes PNG right now, even if you type a different extension.
+  * Save overwrites the original file with no "are you sure" prompt.
+  * No warning if you close/exit without saving.
+
+Expected next sprint:
+  * Drawing on the canvas with the mouse.
+  * A color picker and a way to change the line size.
+  * A "New" option to start a blank canvas.
