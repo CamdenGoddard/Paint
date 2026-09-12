@@ -1,4 +1,4 @@
-Camden's Pain(t)  Version 1.0  -  09/11/2026
+Camden's Pain(t)  Version 0.1.0  -  09/11/2026
 =============================================
 
 Sprint 1 submission for CS 250.
