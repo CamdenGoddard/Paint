@@ -1,33 +1,31 @@
 package com.mycompany.paint;
 
-import java.awt.Graphics2D;
-import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
-import java.util.Locale;
 import java.util.Optional;
 
-import javax.imageio.ImageIO;
-
 import javafx.application.Application;
-import javafx.embed.swing.SwingFXUtils;
+import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
-import javafx.scene.canvas.Canvas;
-import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ColorPicker;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
-import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Slider;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
 import javafx.scene.image.Image;
-import javafx.scene.image.WritableImage;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
@@ -35,58 +33,67 @@ import javafx.scene.paint.Color;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
-// Sprint 2: draw on the canvas with the mouse, pick a color and line width,
-// open/save PNG/JPG/BMP, a Help menu, and a warning before losing unsaved work.
-public class PaintApp extends Application {
+/**
+ * Sprint 3: multiple images open at once via tabs, nine drawing tools
+ * (freehand, straight line, five shapes, an eyedropper, and an eraser),
+ * dashed outlines, keyboard shortcuts, and a color readout in hex/RGB/name
+ * form. See {@link ImageCanvasTab} for what happens inside one tab, and
+ * {@link DrawTool} for what each tool does.
+ *
+ * This class owns the toolbar controls - the tool selector, color
+ * picker, width slider, and dashed checkbox - and implements
+ * {@link ToolSettings} so every open tab can read them without needing to
+ * know they live here.
+ */
+public class PaintApp extends Application implements ToolSettings {
 
-    private static final double DEFAULT_WIDTH = 800;
-    private static final double DEFAULT_HEIGHT = 600;
-
-    // The drawing surface. Both the opened picture and the mouse drawing
-    // end up on this same canvas, so saving it saves both together.
-    private Canvas canvas = new Canvas(DEFAULT_WIDTH, DEFAULT_HEIGHT);
-    private GraphicsContext gc = canvas.getGraphicsContext2D();
-
-    // The file the canvas was last opened from or saved to. null = never saved.
-    private File currentFile;
-
-    // True any time the canvas has changes that have not been saved yet.
-    private boolean unsavedChanges = false;
-
+    private final TabPane tabPane = new TabPane();
+    private final ComboBox<DrawTool> toolSelector =
+            new ComboBox<>(FXCollections.observableArrayList(DrawTool.values()));
     private final ColorPicker colorPicker = new ColorPicker(Color.BLACK);
+    private final Label colorInfoLabel = new Label();
     private final Slider widthSlider = new Slider(1, 20, 3);
-    private final Label widthLabel = new Label("Width: 3");
+    private final Label widthLabel = new Label();
+    private final CheckBox dashedCheckBox = new CheckBox("Dashed");
 
     private Stage window;
+
+    /** Required by JavaFX - the real setup happens in {@link #start}, once the toolkit is ready. */
+    public PaintApp() {
+    }
 
     @Override
     public void start(Stage stage) {
         window = stage;
 
-        // start with a blank white canvas, like a fresh sheet of paper
-        gc.setFill(Color.WHITE);
-        gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
+        toolSelector.getSelectionModel().selectFirst(); // DrawTool.PENCIL
 
-        setupDrawing();
+        widthSlider.valueProperty().addListener((obs, oldVal, newVal) -> updateWidthLabel());
+        colorPicker.valueProperty().addListener((obs, oldVal, newVal) -> updateColorLabel());
+        updateWidthLabel();
+        updateColorLabel();
 
-        ScrollPane scrollPane = new ScrollPane(canvas);
+        addNewTab(); // start with one blank canvas, same as Sprint 1/2 did
 
-        HBox toolBar = new HBox(10, colorPicker, widthLabel, widthSlider);
-        toolBar.setPadding(new Insets(5));
+        HBox toolRow1 = new HBox(10, new Label("Tool:"), toolSelector, colorPicker, colorInfoLabel);
+        toolRow1.setPadding(new Insets(5, 5, 2, 5));
 
-        VBox top = new VBox(makeMenuBar(), toolBar);
+        HBox toolRow2 = new HBox(10, widthLabel, widthSlider, dashedCheckBox);
+        toolRow2.setPadding(new Insets(2, 5, 5, 5));
+
+        VBox top = new VBox(makeMenuBar(), toolRow1, toolRow2);
 
         BorderPane layout = new BorderPane();
         layout.setTop(top);
-        layout.setCenter(scrollPane);
+        layout.setCenter(tabPane);
 
-        Scene scene = new Scene(layout, 900, 650);
+        Scene scene = new Scene(layout, 900, 700);
         stage.setScene(scene);
         stage.setTitle("Paint");
 
-        // catches the window's X button too, not just the Exit menu item
+        // Catches the window's X button too, not just File > Exit.
         stage.setOnCloseRequest(event -> {
-            if (unsavedChanges && !confirmDiscard("closing")) {
+            if (anyUnsavedChanges() && !confirmDiscard("exiting")) {
                 event.consume();
             }
         });
@@ -94,54 +101,85 @@ public class PaintApp extends Application {
         stage.show();
     }
 
-    // Lets the width slider show its current number, and hooks up drawing
-    // with the mouse: press to start a line, drag to keep drawing it.
-    private void setupDrawing() {
-        widthSlider.valueProperty().addListener((obs, oldVal, newVal) ->
-                widthLabel.setText("Width: " + newVal.intValue()));
+    // ------------------------------------------------------------------
+    // ToolSettings - lets every ImageCanvasTab read the shared toolbar
+    // without needing to know it's PaintApp underneath.
+    // ------------------------------------------------------------------
 
-        canvas.setOnMousePressed(e -> {
-            gc.setStroke(colorPicker.getValue());
-            gc.setLineWidth(widthSlider.getValue());
-            gc.beginPath();
-            gc.moveTo(e.getX(), e.getY());
-            gc.stroke();
-        });
-
-        canvas.setOnMouseDragged(e -> {
-            gc.lineTo(e.getX(), e.getY());
-            gc.stroke();
-            unsavedChanges = true;
-        });
+    @Override
+    public DrawTool getTool() {
+        return toolSelector.getValue();
     }
 
-    // Builds the File and Help menus and puts them in a menu bar.
+    @Override
+    public Color getColor() {
+        return colorPicker.getValue();
+    }
+
+    @Override
+    public void setColor(Color color) {
+        // Just changing the value is enough - the listener registered in
+        // start() refreshes colorInfoLabel automatically, so the eyedropper
+        // and a manual pick both keep the label in sync the same way.
+        colorPicker.setValue(color);
+    }
+
+    @Override
+    public double getLineWidth() {
+        return widthSlider.getValue();
+    }
+
+    @Override
+    public boolean isDashed() {
+        return dashedCheckBox.isSelected();
+    }
+
+    /** Refreshes the "Width: N px" label from the slider's current value. */
+    private void updateWidthLabel() {
+        widthLabel.setText("Width: " + (int) widthSlider.getValue() + " px");
+    }
+
+    /** Refreshes the name/hex/rgb label from the color picker's current value. */
+    private void updateColorLabel() {
+        colorInfoLabel.setText(ColorNames.describe(colorPicker.getValue()));
+    }
+
+    // ------------------------------------------------------------------
+    // Menu bar and keyboard shortcuts
+    // ------------------------------------------------------------------
+
+    /** Builds the File and Help menus, with keyboard shortcuts on the File items. */
     private MenuBar makeMenuBar() {
+        MenuItem newTabItem = new MenuItem("New Tab");
+        newTabItem.setAccelerator(new KeyCodeCombination(KeyCode.N, KeyCombination.CONTROL_DOWN));
+        newTabItem.setOnAction(event -> addNewTab());
+
         MenuItem openItem = new MenuItem("Open");
+        openItem.setAccelerator(new KeyCodeCombination(KeyCode.O, KeyCombination.CONTROL_DOWN));
         openItem.setOnAction(event -> openImage());
 
         MenuItem saveItem = new MenuItem("Save");
+        saveItem.setAccelerator(new KeyCodeCombination(KeyCode.S, KeyCombination.CONTROL_DOWN));
         saveItem.setOnAction(event -> save());
 
         MenuItem saveAsItem = new MenuItem("Save As");
+        saveAsItem.setAccelerator(new KeyCodeCombination(
+                KeyCode.S, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN));
         saveAsItem.setOnAction(event -> saveAs());
 
         MenuItem closeItem = new MenuItem("Close Image");
-        closeItem.setOnAction(event -> closeImage());
+        closeItem.setAccelerator(new KeyCodeCombination(KeyCode.W, KeyCombination.CONTROL_DOWN));
+        closeItem.setOnAction(event -> closeCurrentImage());
 
         MenuItem exitItem = new MenuItem("Exit");
         exitItem.setOnAction(event -> {
-            if (!unsavedChanges || confirmDiscard("exiting")) {
+            if (!anyUnsavedChanges() || confirmDiscard("exiting")) {
                 window.close();
             }
         });
 
         Menu fileMenu = new Menu("File");
-        fileMenu.getItems().add(openItem);
-        fileMenu.getItems().add(saveItem);
-        fileMenu.getItems().add(saveAsItem);
-        fileMenu.getItems().add(closeItem);
-        fileMenu.getItems().add(exitItem);
+        fileMenu.getItems().addAll(newTabItem, openItem, saveItem, saveAsItem, closeItem, exitItem);
 
         MenuItem helpItem = new MenuItem("Help");
         helpItem.setOnAction(event -> showHelp());
@@ -150,21 +188,79 @@ public class PaintApp extends Application {
         aboutItem.setOnAction(event -> showAbout());
 
         Menu helpMenu = new Menu("Help");
-        helpMenu.getItems().add(helpItem);
-        helpMenu.getItems().add(aboutItem);
+        helpMenu.getItems().addAll(helpItem, aboutItem);
 
         MenuBar menuBar = new MenuBar();
-        menuBar.getMenus().add(fileMenu);
-        menuBar.getMenus().add(helpMenu);
+        menuBar.getMenus().addAll(fileMenu, helpMenu);
         return menuBar;
     }
 
-    // Ask the user to pick a file, load it as an image, and draw it on the canvas.
-    private void openImage() {
-        if (unsavedChanges && !confirmDiscard("opening a different picture")) {
-            return;
-        }
+    // ------------------------------------------------------------------
+    // Tabs
+    // ------------------------------------------------------------------
 
+    /**
+     * Creates a new blank tab, wires up its close behavior, and switches
+     * to it. Used for the initial window and for File > New Tab.
+     *
+     * @return the newly created tab, in case a caller needs it
+     */
+    private ImageCanvasTab addNewTab() {
+        ImageCanvasTab imageTab = new ImageCanvasTab(this);
+        registerTab(imageTab);
+        return imageTab;
+    }
+
+    /** Wires up close behavior, adds the tab to the TabPane, and selects it. */
+    private void registerTab(ImageCanvasTab imageTab) {
+        wireTabCloseRequest(imageTab);
+        tabPane.getTabs().add(imageTab.getTab());
+        tabPane.getSelectionModel().select(imageTab.getTab());
+    }
+
+    /**
+     * Makes the tab's own close button ("x") go through the same
+     * unsaved-changes check as File > Close Image, instead of just
+     * closing immediately. This is the one place that logic lives -
+     * {@link #closeCurrentImage()} below reuses it.
+     */
+    private void wireTabCloseRequest(ImageCanvasTab imageTab) {
+        imageTab.getTab().setOnCloseRequest(event -> {
+            event.consume(); // we decide what actually happens, below
+            closeImageTab(imageTab);
+        });
+    }
+
+    /**
+     * @return the {@link ImageCanvasTab} behind whichever tab is currently selected
+     */
+    private ImageCanvasTab activeTab() {
+        Tab selected = tabPane.getSelectionModel().getSelectedItem();
+        return (ImageCanvasTab) selected.getUserData();
+    }
+
+    /**
+     * @return true if any open tab - not just the current one - has unsaved changes
+     */
+    private boolean anyUnsavedChanges() {
+        for (Tab tab : tabPane.getTabs()) {
+            if (((ImageCanvasTab) tab.getUserData()).isUnsaved()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ------------------------------------------------------------------
+    // File menu actions
+    // ------------------------------------------------------------------
+
+    /**
+     * Lets the user pick an image file and opens it into a brand new tab,
+     * leaving every already-open tab untouched - so unlike Sprint 2,
+     * there's nothing to lose here and nothing to confirm first.
+     */
+    private void openImage() {
         FileChooser chooser = new FileChooser();
         chooser.setTitle("Open Image");
         chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter(
@@ -181,101 +277,78 @@ public class PaintApp extends Application {
             return;
         }
 
-        canvas.setWidth(image.getWidth());
-        canvas.setHeight(image.getHeight());
-        gc.drawImage(image, 0, 0);
-
-        currentFile = file;
-        unsavedChanges = false;
-        window.setTitle("Paint - " + file.getName());
+        ImageCanvasTab newTab = new ImageCanvasTab(this, file, image);
+        registerTab(newTab);
     }
 
-    // Save to the file we already have. If there isn't one yet, do Save As.
+    /** Saves the active tab to the file it already has, or Save As if it doesn't have one yet. */
     private void save() {
-        if (currentFile == null) {
+        ImageCanvasTab current = activeTab();
+        if (current.getCurrentFile() == null) {
             saveAs();
             return;
         }
-        writeToFile(currentFile);
+        writeAndReport(current, current.getCurrentFile());
     }
 
-    // Ask the user where to save, then save there and remember that file.
+    /** Asks the active tab's user where to save, then saves there. */
     private void saveAs() {
+        ImageCanvasTab current = activeTab();
+
         FileChooser chooser = new FileChooser();
         chooser.setTitle("Save Image As");
-        chooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("PNG image", "*.png"));
-        chooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("JPEG image", "*.jpg", "*.jpeg"));
-        chooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("BMP image", "*.bmp"));
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PNG image", "*.png"));
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("JPEG image", "*.jpg", "*.jpeg"));
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("BMP image", "*.bmp"));
         File file = chooser.showSaveDialog(window);
 
         if (file == null) {
             return;
         }
-
-        writeToFile(file);
-        currentFile = file;
-        window.setTitle("Paint - " + file.getName());
+        writeAndReport(current, file);
     }
 
-    // Write whatever is currently on the canvas to disk, in the format
-    // that matches the file's extension (defaults to PNG if there isn't one).
-    private void writeToFile(File file) {
-        String extension = extensionOf(file);
-        if (extension == null) {
-            extension = "png";
-        }
-
-        WritableImage snapshot = canvas.snapshot(null, null);
-        BufferedImage picture = SwingFXUtils.fromFXImage(snapshot, null);
-
-        // JPG and BMP don't support transparency, so flatten onto white first.
-        if (extension.equals("jpg") || extension.equals("jpeg") || extension.equals("bmp")) {
-            BufferedImage flattened = new BufferedImage(
-                    picture.getWidth(), picture.getHeight(), BufferedImage.TYPE_INT_RGB);
-            Graphics2D g = flattened.createGraphics();
-            g.drawImage(picture, 0, 0, java.awt.Color.WHITE, null);
-            g.dispose();
-            picture = flattened;
-        }
-
+    /** Runs {@link ImageCanvasTab#writeToFile} and shows an error message if it fails. */
+    private void writeAndReport(ImageCanvasTab tab, File file) {
         try {
-            ImageIO.write(picture, extension, file);
-            unsavedChanges = false;
+            tab.writeToFile(file);
         } catch (IOException e) {
             showMessage("The image could not be saved: " + e.getMessage());
         }
     }
 
-    // Lower-case file extension without the dot, or null if there isn't one.
-    private static String extensionOf(File file) {
-        String name = file.getName();
-        int dot = name.lastIndexOf('.');
-        if (dot < 0 || dot == name.length() - 1) {
-            return null;
-        }
-        return name.substring(dot + 1).toLowerCase(Locale.ROOT);
+    /**
+     * Closes the currently active tab (or, if it's the only one open,
+     * resets it to blank instead - a Paint window always keeps at least
+     * one tab). Checks for unsaved changes first, same as clicking the
+     * tab's own close button.
+     */
+    private void closeCurrentImage() {
+        closeImageTab(activeTab());
     }
 
-    // Clear the canvas back to blank, after checking for unsaved changes.
-    private void closeImage() {
-        if (unsavedChanges && !confirmDiscard("closing this image")) {
+    /** The shared logic behind both File > Close Image and a tab's own close button. */
+    private void closeImageTab(ImageCanvasTab imageTab) {
+        if (imageTab.isUnsaved() && !confirmDiscard("closing this image")) {
             return;
         }
-
-        canvas.setWidth(DEFAULT_WIDTH);
-        canvas.setHeight(DEFAULT_HEIGHT);
-        gc.setFill(Color.WHITE);
-        gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
-
-        currentFile = null;
-        unsavedChanges = false;
-        window.setTitle("Paint");
+        if (tabPane.getTabs().size() <= 1) {
+            imageTab.resetToBlank();
+        } else {
+            tabPane.getTabs().remove(imageTab.getTab());
+        }
     }
 
-    // Asks "are you sure", since there are unsaved changes. true = go ahead anyway.
+    // ------------------------------------------------------------------
+    // Dialogs
+    // ------------------------------------------------------------------
+
+    /**
+     * Asks "are you sure", since there are unsaved changes.
+     *
+     * @param action describes what's about to happen, e.g. "exiting"
+     * @return true if the user chose to go ahead anyway
+     */
     private boolean confirmDiscard(String action) {
         Alert alert = new Alert(AlertType.CONFIRMATION);
         alert.setHeaderText(null);
@@ -284,25 +357,35 @@ public class PaintApp extends Application {
         return result.isPresent() && result.get() == ButtonType.OK;
     }
 
+    /** Shows the Help menu's usage instructions. */
     private void showHelp() {
         Alert alert = new Alert(AlertType.INFORMATION);
         alert.setTitle("Help");
         alert.setHeaderText(null);
         alert.setContentText(
-                "File > Open to load a picture, or just start drawing on the blank canvas.\n"
-                + "Click and drag on the canvas to draw.\n"
-                + "Pick a color and line width above the canvas.\n"
-                + "File > Save / Save As to save as PNG, JPG, or BMP.");
+                "File > Open loads a picture into a new tab; File > New Tab starts a blank one.\n"
+                + "Pick a tool from the Tool dropdown. Pencil and Eraser draw as you drag;\n"
+                + "Line, Square, Rectangle, Circle, Ellipse, and Triangle preview as you drag\n"
+                + "and lock in when you release the mouse.\n"
+                + "Pick a color and line width above the canvas - the label by the color\n"
+                + "swatch shows its name, hex code, and RGB value.\n"
+                + "Check \"Dashed\" to draw dashed lines and outlines instead of solid ones.\n"
+                + "Color Grabber sets the active color from a pixel you click. Right-clicking\n"
+                + "does the same thing at any time, even mid-drag on a shape you're drawing.\n"
+                + "Shortcuts: Ctrl+N New Tab, Ctrl+O Open, Ctrl+S Save,\n"
+                + "Ctrl+Shift+S Save As, Ctrl+W Close Image.");
         alert.showAndWait();
     }
 
-    // About opens in its own small window, separate from the Help alert.
+    /** About opens in its own small window, separate from the Help alert. */
     private void showAbout() {
         Stage aboutStage = new Stage();
         aboutStage.initOwner(window);
         aboutStage.setTitle("About");
 
-        Label text = new Label("Camden's Pain(t)\nCS 250 term project\nby Camden Goddard");
+        Label text = new Label(
+                "Camden's Pain(t)\nCS 250 term project\nby Camden Goddard\n\n"
+                + "Written in Java, so it's fully brewed and object-oriented.");
         Button closeButton = new Button("Close");
         closeButton.setOnAction(event -> aboutStage.close());
 
@@ -313,6 +396,7 @@ public class PaintApp extends Application {
         aboutStage.show();
     }
 
+    /** Shows a plain informational popup with the given message. */
     private void showMessage(String text) {
         Alert alert = new Alert(AlertType.INFORMATION);
         alert.setHeaderText(null);
