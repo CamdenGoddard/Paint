@@ -19,31 +19,37 @@ import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Slider;
+import javafx.scene.control.Spinner;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
+import javafx.scene.control.TextField;
 import javafx.scene.image.Image;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
 /**
- * Sprint 3: multiple images open at once via tabs, nine drawing tools
- * (freehand, straight line, five shapes, an eyedropper, and an eraser),
- * dashed outlines, keyboard shortcuts, and a color readout in hex/RGB/name
- * form. See {@link ImageCanvasTab} for what happens inside one tab, and
- * {@link DrawTool} for what each tool does.
+ * Sprint 4: everything from Sprint 3 (tabs, shape tools, dashed outlines,
+ * shortcuts, color readout) plus undo/redo, a clear-canvas button with an
+ * "are you sure" check, more shapes (right triangle, regular polygon with
+ * any number of sides, star), rectangle select with copy, cut, paste and
+ * move, and a text tool. See {@link ImageCanvasTab} for what happens inside
+ * one tab, and {@link DrawTool} for what each tool does.
  *
- * This class owns the toolbar controls - the tool selector, color
- * picker, width slider, and dashed checkbox - and implements
- * {@link ToolSettings} so every open tab can read them without needing to
- * know they live here.
+ * <p>This class owns the toolbar controls - the tool selector, color
+ * picker, width slider, dashed checkbox, polygon side count, and text
+ * options - and implements {@link ToolSettings} so every open tab can read
+ * them without needing to know they live here. It also owns the menus; the
+ * Edit menu simply forwards to whichever tab is currently selected.</p>
  */
 public class PaintApp extends Application implements ToolSettings {
 
@@ -55,6 +61,9 @@ public class PaintApp extends Application implements ToolSettings {
     private final Slider widthSlider = new Slider(1, 20, 3);
     private final Label widthLabel = new Label();
     private final CheckBox dashedCheckBox = new CheckBox("Dashed");
+    private final Spinner<Integer> sidesSpinner = makeIntSpinner(3, 100, 5);
+    private final TextField textField = new TextField();
+    private final Spinner<Integer> fontSizeSpinner = makeIntSpinner(6, 300, 32);
 
     private Stage window;
 
@@ -78,10 +87,23 @@ public class PaintApp extends Application implements ToolSettings {
         HBox toolRow1 = new HBox(10, new Label("Tool:"), toolSelector, colorPicker, colorInfoLabel);
         toolRow1.setPadding(new Insets(5, 5, 2, 5));
 
-        HBox toolRow2 = new HBox(10, widthLabel, widthSlider, dashedCheckBox);
-        toolRow2.setPadding(new Insets(2, 5, 5, 5));
+        Button clearButton = new Button("Clear Canvas");
+        clearButton.setOnAction(event -> clearCanvas());
 
-        VBox top = new VBox(makeMenuBar(), toolRow1, toolRow2);
+        HBox toolRow2 = new HBox(10, widthLabel, widthSlider, dashedCheckBox, clearButton);
+        toolRow2.setPadding(new Insets(2, 5, 2, 5));
+
+        textField.setPromptText("Text for the Text tool");
+        textField.setPrefColumnCount(18);
+        sidesSpinner.setPrefWidth(75);
+        fontSizeSpinner.setPrefWidth(80);
+        HBox toolRow3 = new HBox(10,
+                new Label("Polygon sides:"), sidesSpinner,
+                new Label("Text:"), textField,
+                new Label("Text size:"), fontSizeSpinner);
+        toolRow3.setPadding(new Insets(2, 5, 5, 5));
+
+        VBox top = new VBox(makeMenuBar(), toolRow1, toolRow2, toolRow3);
 
         BorderPane layout = new BorderPane();
         layout.setTop(top);
@@ -112,6 +134,11 @@ public class PaintApp extends Application implements ToolSettings {
     }
 
     @Override
+    public void setTool(DrawTool tool) {
+        toolSelector.setValue(tool);
+    }
+
+    @Override
     public Color getColor() {
         return colorPicker.getValue();
     }
@@ -134,6 +161,45 @@ public class PaintApp extends Application implements ToolSettings {
         return dashedCheckBox.isSelected();
     }
 
+    @Override
+    public int getPolygonSides() {
+        return sidesSpinner.getValue();
+    }
+
+    @Override
+    public String getText() {
+        return textField.getText();
+    }
+
+    @Override
+    public double getFontSize() {
+        return fontSizeSpinner.getValue();
+    }
+
+    /**
+     * Builds a whole-number spinner that can be typed into. A typed value
+     * only counts once the spinner loses focus or Enter is pressed, so this
+     * also commits it on focus loss - otherwise clicking straight onto the
+     * canvas after typing a number would leave the old number in use. Text
+     * that is not a number reverts to the last good value.
+     */
+    private static Spinner<Integer> makeIntSpinner(int min, int max, int initial) {
+        Spinner<Integer> spinner = new Spinner<>(min, max, initial);
+        spinner.setEditable(true);
+        spinner.focusedProperty().addListener((obs, wasFocused, isFocused) -> {
+            if (!isFocused) {
+                try {
+                    int typed = Integer.parseInt(spinner.getEditor().getText().trim());
+                    spinner.getValueFactory().setValue(Math.max(min, Math.min(max, typed)));
+                } catch (NumberFormatException ex) {
+                    // fall through: put the last good value back in the box
+                }
+                spinner.getEditor().setText(String.valueOf(spinner.getValue()));
+            }
+        });
+        return spinner;
+    }
+
     /** Refreshes the "Width: N px" label from the slider's current value. */
     private void updateWidthLabel() {
         widthLabel.setText("Width: " + (int) widthSlider.getValue() + " px");
@@ -148,7 +214,7 @@ public class PaintApp extends Application implements ToolSettings {
     // Menu bar and keyboard shortcuts
     // ------------------------------------------------------------------
 
-    /** Builds the File and Help menus, with keyboard shortcuts on the File items. */
+    /** Builds the File, Edit and Help menus, with keyboard shortcuts on their items. */
     private MenuBar makeMenuBar() {
         MenuItem newTabItem = new MenuItem("New Tab");
         newTabItem.setAccelerator(new KeyCodeCombination(KeyCode.N, KeyCombination.CONTROL_DOWN));
@@ -181,6 +247,35 @@ public class PaintApp extends Application implements ToolSettings {
         Menu fileMenu = new Menu("File");
         fileMenu.getItems().addAll(newTabItem, openItem, saveItem, saveAsItem, closeItem, exitItem);
 
+        MenuItem undoItem = new MenuItem("Undo");
+        undoItem.setAccelerator(new KeyCodeCombination(KeyCode.Z, KeyCombination.CONTROL_DOWN));
+        undoItem.setOnAction(event -> activeTab().undo());
+
+        MenuItem redoItem = new MenuItem("Redo");
+        redoItem.setAccelerator(new KeyCodeCombination(KeyCode.Y, KeyCombination.CONTROL_DOWN));
+        redoItem.setOnAction(event -> activeTab().redo());
+
+        MenuItem cutItem = new MenuItem("Cut");
+        cutItem.setAccelerator(new KeyCodeCombination(KeyCode.X, KeyCombination.CONTROL_DOWN));
+        cutItem.setOnAction(event -> activeTab().cutSelection());
+
+        MenuItem copyItem = new MenuItem("Copy");
+        copyItem.setAccelerator(new KeyCodeCombination(KeyCode.C, KeyCombination.CONTROL_DOWN));
+        copyItem.setOnAction(event -> activeTab().copySelection());
+
+        MenuItem pasteItem = new MenuItem("Paste");
+        pasteItem.setAccelerator(new KeyCodeCombination(KeyCode.V, KeyCombination.CONTROL_DOWN));
+        pasteItem.setOnAction(event -> activeTab().pasteFromClipboard());
+
+        MenuItem clearItem = new MenuItem("Clear Canvas");
+        clearItem.setAccelerator(new KeyCodeCombination(
+                KeyCode.C, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN));
+        clearItem.setOnAction(event -> clearCanvas());
+
+        Menu editMenu = new Menu("Edit");
+        editMenu.getItems().addAll(undoItem, redoItem, new SeparatorMenuItem(),
+                cutItem, copyItem, pasteItem, new SeparatorMenuItem(), clearItem);
+
         MenuItem helpItem = new MenuItem("Help");
         helpItem.setOnAction(event -> showHelp());
 
@@ -191,7 +286,7 @@ public class PaintApp extends Application implements ToolSettings {
         helpMenu.getItems().addAll(helpItem, aboutItem);
 
         MenuBar menuBar = new MenuBar();
-        menuBar.getMenus().addAll(fileMenu, helpMenu);
+        menuBar.getMenus().addAll(fileMenu, editMenu, helpMenu);
         return menuBar;
     }
 
@@ -327,6 +422,21 @@ public class PaintApp extends Application implements ToolSettings {
         closeImageTab(activeTab());
     }
 
+    /**
+     * Asks "are you sure", then wipes the active tab's canvas to blank.
+     * The wipe is an ordinary edit, so Undo can still bring the picture back.
+     */
+    private void clearCanvas() {
+        Alert alert = new Alert(AlertType.CONFIRMATION);
+        alert.setTitle("Clear Canvas");
+        alert.setHeaderText(null);
+        alert.setContentText("Clear the whole canvas? (You can still undo this with Edit > Undo.)");
+        Optional<ButtonType> result = alert.showAndWait();
+        if (result.isPresent() && result.get() == ButtonType.OK) {
+            activeTab().clearCanvas();
+        }
+    }
+
     /** The shared logic behind both File > Close Image and a tab's own close button. */
     private void closeImageTab(ImageCanvasTab imageTab) {
         if (imageTab.isUnsaved() && !confirmDiscard("closing this image")) {
@@ -362,18 +472,29 @@ public class PaintApp extends Application implements ToolSettings {
         Alert alert = new Alert(AlertType.INFORMATION);
         alert.setTitle("Help");
         alert.setHeaderText(null);
+        alert.getDialogPane().setMinHeight(Region.USE_PREF_SIZE); // keep long help text from being cut off
         alert.setContentText(
                 "File > Open loads a picture into a new tab; File > New Tab starts a blank one.\n"
-                + "Pick a tool from the Tool dropdown. Pencil and Eraser draw as you drag;\n"
-                + "Line, Square, Rectangle, Circle, Ellipse, and Triangle preview as you drag\n"
-                + "and lock in when you release the mouse.\n"
-                + "Pick a color and line width above the canvas - the label by the color\n"
-                + "swatch shows its name, hex code, and RGB value.\n"
-                + "Check \"Dashed\" to draw dashed lines and outlines instead of solid ones.\n"
-                + "Color Grabber sets the active color from a pixel you click. Right-clicking\n"
-                + "does the same thing at any time, even mid-drag on a shape you're drawing.\n"
-                + "Shortcuts: Ctrl+N New Tab, Ctrl+O Open, Ctrl+S Save,\n"
-                + "Ctrl+Shift+S Save As, Ctrl+W Close Image.");
+                + "Pick a tool from the Tool dropdown. Pencil and Eraser draw as you drag; every\n"
+                + "shape (Line, Square, Rectangle, Circle, Ellipse, both Triangles, Regular Polygon,\n"
+                + "Star) previews as you drag and locks in when you release the mouse.\n"
+                + "Right Triangle: the right angle is where you press the mouse.\n"
+                + "Regular Polygon: press at the center and drag outward; set the number of sides\n"
+                + "with the \"Polygon sides\" box (3 sides gives an equilateral triangle).\n"
+                + "Text: type into the Text box, pick the Text tool, then drag - the text follows\n"
+                + "the mouse and is placed where you let go.\n"
+                + "Select: drag a rectangle, then drag inside it to move that piece. Edit > Copy,\n"
+                + "Cut and Paste work on the selection; a pasted piece can be dragged into place\n"
+                + "right away. Click outside the piece to put it down.\n"
+                + "Edit > Undo / Redo step through your edits (up to 40 per tab).\n"
+                + "Clear Canvas (button or Edit menu) asks first, and can be undone.\n"
+                + "Pick a color and line width - the label by the color swatch shows its name,\n"
+                + "hex code, and RGB value. \"Dashed\" draws dashed lines and outlines.\n"
+                + "Color Grabber sets the color from a pixel you click. Right-clicking does the\n"
+                + "same at any time, even mid-drag on a shape you're drawing.\n"
+                + "Shortcuts: Ctrl+N New Tab, Ctrl+O Open, Ctrl+S Save, Ctrl+Shift+S Save As,\n"
+                + "Ctrl+W Close Image, Ctrl+Z Undo, Ctrl+Y Redo, Ctrl+X/C/V Cut/Copy/Paste,\n"
+                + "Ctrl+Shift+C Clear Canvas.");
         alert.showAndWait();
     }
 

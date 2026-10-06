@@ -1,100 +1,86 @@
-Camden's Pain(t)  Version 0.3.0  -  09/25/2026
+Camden's Pain(t)  Version 0.4.0  -  10/04/2026
 =============================================
 
-Sprint 3 submission for CS 250.
+Sprint 4 submission for CS 250.
 
 Source code:
   GitHub repo:  https://github.com/CamdenGoddard/Paint
-  Tag / release:  v0.3.0  (https://github.com/CamdenGoddard/Paint/releases/tag/v0.3.0)
-  This tag matches the code uploaded in the sprint 3 zip.
+  Tag / release:  v0.4.0  (https://github.com/CamdenGoddard/Paint/releases/tag/v0.4.0)
+  This tag matches the code uploaded in the sprint 4 zip.
 
 New features:
-  * Tabs - multiple images can be open in the same window at once. File >
-    New Tab starts a blank one; File > Open always opens into a new tab
-    rather than replacing what's already open.
-  * Seven new tools alongside the existing Pencil: Line, Square, Rectangle,
-    Circle, Ellipse, Triangle, plus a Color Grabber (eyedropper) and an
-    Eraser. Pick one from the new Tool dropdown.
-  * Shape tools preview live while you drag and lock in when you release
-    the mouse, instead of committing immediately like Pencil does.
-  * Color Grabber sets the active color from a pixel you click. Right-click
-    does the same thing at any time - including mid-drag on a shape you're
-    still drawing, which updates that shape's color on the spot.
-  * Width slider now also controls shape outline thickness, not just
-    freehand line width, and the label reads in pixels ("Width: 15 px").
-  * A "Dashed" checkbox draws dashed lines and outlines instead of solid.
-  * The color swatch now has a label showing the selected color's English
-    name (for common colors), hex code, and RGB value.
-  * Keyboard shortcuts: Ctrl+N (New Tab), Ctrl+O (Open), Ctrl+S (Save),
-    Ctrl+Shift+S (Save As), Ctrl+W (Close Image).
-  * Full JavaDoc comments across every class and method.
+  * Undo and Redo (Edit menu, Ctrl+Z / Ctrl+Y). Each tab has its own
+    history, built from two stacks (UndoHistory.java): every edit pushes a
+    "before" snapshot onto the undo stack; undoing pops it and pushes the
+    current picture onto the redo stack; a brand-new edit empties the redo
+    stack. History is capped at 40 steps per tab so memory stays bounded.
+  * Blank starting image: the program opens with a blank white canvas, and
+    File > New Tab (Ctrl+N) gives another one.
+  * Clear Canvas (button in the toolbar, or Edit > Clear Canvas,
+    Ctrl+Shift+C). It asks "are you sure" first, and can be undone.
+  * One more shape of my choice: a five-pointed Star.
+  * Regular Polygon with any number of sides (3 to 100, set in the
+    "Polygon sides" box). Press at the center and drag outward; the first
+    corner follows the mouse, so it rotates as you drag. With 3 sides it is
+    an equilateral triangle.
+  * Triangles: "Right Triangle" puts the right angle exactly where you
+    press the mouse, with legs running horizontally and vertically.
+    "Triangle (isosceles)" is the Sprint 3 triangle, and the 3-sided
+    polygon is an equilateral triangle - neither of those has a right
+    angle.
+  * Select tool: drag out a rectangle (shown with a dashed outline), then
+    drag inside it to move that piece of the image. The piece moves live
+    while you drag and leaves white behind.
+  * Edit > Copy, Cut and Paste (Ctrl+C / Ctrl+X / Ctrl+V) work on the
+    selection, including between tabs. A pasted
+    piece appears at the top-left already selected and can be dragged into
+    place right away.
+  * Text tool: type text into the "Text" box (size in "Text size"), pick
+    the Text tool, then press and drag on the image. The text follows the
+    mouse as a live preview and is placed where you let go.
+  * "Live draw": every shape, the text, and moving or pasting a selection
+    previews while the mouse is down, and only becomes part of the image
+    (and one undo step) when it is finished.
+  * Tabs and git are used as in earlier sprints.
+  * Small fixes: letting go of the right mouse button mid-drag no longer
+    ends a left-button drag early, and shape previews no longer leave
+    trails over transparent parts of an opened PNG.
 
 Design notes / assumptions:
-  * The assignment's color-grabber requirement ("has to modify shapes that
-    are being drawn") was interpreted as: right-click sampling works at any
-    time, even mid-drag, so it can retarget the color of a shape that's
-    still being previewed before you let go of the mouse.
-  * Square and Circle behave like Rectangle and Ellipse but force both
-    dimensions equal, using the larger of the drag's width/height.
-  * Triangle is a simple isosceles triangle (apex centered on top, base
-    spanning the full width) inscribed in the drag's bounding box.
-  * Undo/redo and a dedicated "New" option (mentioned as "expected next"
-    in the Sprint 2 notes) were intentionally left out - they weren't on
-    this sprint's requirement list, and tabs cover most of what a quick
-    "New" was standing in for.
+  * Undo works by keeping a full snapshot of the canvas before each edit.
+    That is simple and easy to get right, at the cost of memory (hence the
+    40-step cap).
+  * Moving a selection cuts it out, leaving white. Anything dragged
+    partly off the edge of the canvas is cropped when it is put down.
+  * Selecting, moving and pasting are one undo step each (the whole move
+    undoes at once, not pixel by pixel).
+  * The selection outline is drawn on a separate transparent layer, so it
+    never ends up in a saved file or in an undo snapshot.
 
 Known issues:
-  * Still no undo/redo.
-  * Only one extra shape beyond the required list would still be needed
-    for the optional Week 4 bonus, along with a Java pun (added a small
-    one in the About window) and the eraser (already included above).
+  * The selection can only be a rectangle, and text can't be edited or
+    moved once it has been placed (use Undo and place it again).
+  * Text uses the default font only.
+  * Undo history is lost when a tab is closed or reset, and a very large
+    opened image uses a lot of memory per undo step.
   * If you type a file name with an extension Save As doesn't offer
     (something other than .png/.jpg/.bmp), it silently saves as PNG - same
     as Sprint 2.
   * The color-name label only recognizes a curated list of common colors;
     anything else reads as "Custom" rather than the closest match.
 
-Expected next sprint:
-  * Undo / redo.
-  * Whatever Week 4 adds on top of the optional bonuses.
-
--------------------------------------------------------------------------
-
-Camden's Pain(t)  Version 0.2.0  -  09/16/2026
-=============================================
-
-Sprint 2 submission for CS 250.
-
-Source code:
-  GitHub repo:  https://github.com/CamdenGoddard/Paint
-  Tag / release:  v0.2.0  (https://github.com/CamdenGoddard/Paint/releases/tag/v0.2.0)
-  This tag matches the code uploaded in the sprint 2 zip.
-
-New features:
-  * Draw on the canvas by clicking and dragging the mouse.
-  * Color picker to choose what color you draw with.
-  * A slider to control line width, with a label showing the current number.
-  * Open, Save, and Save As now all support PNG, JPG, and BMP.
-  * Help menu: "Help" (how to use the app) and "About" (opens in its own
-    separate window, not just a pop-up).
-  * The app now warns you if you try to open a different picture, use
-    Close Image, or Exit while there are unsaved changes - this also
-    catches clicking the window's X button, not just the Exit menu item.
-  * The window can be resized; if the picture is bigger than the window,
-    it scrolls (same as Sprint 1).
-
-Known issues:
-  * No undo/redo yet.
-  * No separate "New" option - Close Image clears back to a blank canvas,
-    which covers the same need for now.
-  * Only freehand drawing - no shape tools (line, rectangle, etc.) yet.
-  * The color picker and width slider only affect new lines going forward,
-    not lines already drawn (this is expected - once a line is drawn it's
-    just pixels on the canvas, there's nothing left to "recolor").
-  * If you type a file name with an extension Save As doesn't offer
-    (something other than .png/.jpg/.bmp), it silently saves as PNG anyway.
+Critique (current state and code quality):
+  The program now does everything the Sprint 4 list asks for and the
+  features work together - for example, a move, a paste, a text placement
+  and a clear are all undoable the same way. The code is fairly well
+  organized: the shape geometry (ShapeDrawer), the undo stacks
+  (UndoHistory) and the toolbar settings (ToolSettings) are each small and
+  do one job, and everything has JavaDoc. The weak spot is
+  ImageCanvasTab.java, which at roughly 800 lines mixes file saving, mouse
+  handling and the selection logic, and should be split up (for example
+  the selection into its own class) before adding more tools. There are
+  also no committed automated tests, and snapshot-based undo trades memory
+  for simplicity, so a diff-based history would scale better.
 
 Expected next sprint:
-  * Undo / redo.
-  * A real "New" blank canvas option.
-  * Shape tools beyond freehand drawing, if required.
+  * Whatever Week 5 adds.
