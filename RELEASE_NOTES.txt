@@ -70,17 +70,11 @@ Known issues:
     anything else reads as "Custom" rather than the closest match.
 
 Critique (current state and code quality):
-  The program now does everything the Sprint 4 list asks for and the
-  features work together - for example, a move, a paste, a text placement
-  and a clear are all undoable the same way. The code is fairly well
-  organized: the shape geometry (ShapeDrawer), the undo stacks
-  (UndoHistory) and the toolbar settings (ToolSettings) are each small and
-  do one job, and everything has JavaDoc. The weak spot is
-  ImageCanvasTab.java, which at roughly 800 lines mixes file saving, mouse
-  handling and the selection logic, and should be split up (for example
-  the selection into its own class) before adding more tools. There are
-  also no committed automated tests, and snapshot-based undo trades memory
-  for simplicity, so a diff-based history would scale better.
+  The program does everything the Sprint 4 list asks for and the features
+  work. ShapeDrawer, UndoHistory and ToolSettings are small and each do one
+  job. The weak spot is ImageCanvasTab.java (about 800 lines), which mixes
+  file saving, mouse handling and selection logic and should be split up. I
+  need to add more files to the program.
 
 Expected next sprint:
   * Whatever Week 5 adds.
