@@ -70,6 +70,10 @@ public final class ImageCanvasTab {
      */
     private static Image appClipboard;
 
+    /** Where the last copied piece came from, so a paste can land just offset from it. */
+    private static int copiedX;
+    private static int copiedY;
+
     private final Canvas canvas;
     private final GraphicsContext gc;
     /** Transparent layer over the canvas that holds only the selection outline. */
@@ -308,10 +312,16 @@ public final class ImageCanvasTab {
         }
         Image piece = (floating != null) ? floating : snapshotRegion(selX, selY, selW, selH);
         appClipboard = piece;
+        copiedX = selX;
+        copiedY = selY;
 
-        ClipboardContent content = new ClipboardContent();
-        content.putImage(piece);
-        Clipboard.getSystemClipboard().setContent(content);
+        try {
+            ClipboardContent content = new ClipboardContent();
+            content.putImage(piece);
+            Clipboard.getSystemClipboard().setContent(content);
+        } catch (RuntimeException e) {
+            // The system clipboard is only a bonus; the in-app copy above still works.
+        }
     }
 
     /**
@@ -343,19 +353,24 @@ public final class ImageCanvasTab {
     }
 
     /**
-     * Pastes the clipboard's image into the top-left corner of the canvas
+     * Pastes the clipboard's image onto the canvas (just down and right of where it was copied from)
      * as a floating, selected piece, and switches to the Select tool so it
      * can be dragged into place right away. Does nothing if the clipboard
      * has no image.
      */
     public void pasteFromClipboard() {
-        Image pasted = null;
-        Clipboard systemClipboard = Clipboard.getSystemClipboard();
-        if (systemClipboard.hasImage()) {
-            pasted = systemClipboard.getImage();
-        }
+        // Prefer the piece copied inside this program; fall back to an image
+        // copied from another program.
+        Image pasted = appClipboard;
         if (pasted == null) {
-            pasted = appClipboard;
+            try {
+                Clipboard systemClipboard = Clipboard.getSystemClipboard();
+                if (systemClipboard.hasImage()) {
+                    pasted = systemClipboard.getImage();
+                }
+            } catch (RuntimeException e) {
+                pasted = null;
+            }
         }
         if (pasted == null) {
             return;
@@ -366,8 +381,10 @@ public final class ImageCanvasTab {
         floatingBase = floatingBefore; // nothing is removed, so the base is the "before" picture
         floating = pasted;
 
-        selX = 0;
-        selY = 0;
+        // Land a little down and right of where it was copied, so the
+        // pasted piece is visibly separate from the original.
+        selX = (pasted == appClipboard) ? copiedX + 20 : 0;
+        selY = (pasted == appClipboard) ? copiedY + 20 : 0;
         selW = (int) pasted.getWidth();
         selH = (int) pasted.getHeight();
         hasSelection = true;

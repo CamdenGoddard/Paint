@@ -33,7 +33,7 @@ New features:
     while you drag and leaves white behind.
   * Edit > Copy, Cut and Paste (Ctrl+C / Ctrl+X / Ctrl+V) work on the
     selection, including between tabs. A pasted
-    piece appears at the top-left already selected and can be dragged into
+    piece appears just down and right of the original, already selected, and can be dragged into
     place right away.
   * Text tool: type text into the "Text" box (size in "Text size"), pick
     the Text tool, then press and drag on the image. The text follows the
