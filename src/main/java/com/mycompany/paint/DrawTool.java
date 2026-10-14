@@ -53,8 +53,8 @@ public enum DrawTool {
      */
     POLYGON("Regular Polygon (N sides)"),
 
-    /** An outlined five-pointed star sized to the drag's bounding box. */
-    STAR("Star"),
+    /** An outlined star with a chosen number of points (4 or more) sized to the drag's bounding box. */
+    STAR("Star (N points)"),
 
     /**
      * Samples the color of whatever pixel is clicked and makes it the

@@ -2,15 +2,26 @@ package com.mycompany.paint;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ColorPicker;
@@ -33,23 +44,24 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.util.Duration;
 import javafx.scene.paint.Color;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
 /**
- * Sprint 4: everything from Sprint 3 (tabs, shape tools, dashed outlines,
- * shortcuts, color readout) plus undo/redo, a clear-canvas button with an
- * "are you sure" check, more shapes (right triangle, regular polygon with
- * any number of sides, star), rectangle select with copy, cut, paste and
- * move, and a text tool. See {@link ImageCanvasTab} for what happens inside
- * one tab, and {@link DrawTool} for what each tool does.
+ * Sprint 5: everything from Sprint 4 (undo/redo, clear canvas, polygons,
+ * select/copy/paste/move, text) plus a star with a chosen number of points,
+ * an autosave timer with an optional on-screen countdown, a small web server
+ * that shows the tabs the user picks, and a warning when Save As would lose
+ * data by switching file formats. See {@link ImageCanvasTab} for what
+ * happens inside one tab, and {@link DrawTool} for what each tool does.
  *
- * <p>This class owns the toolbar controls - the tool selector, color
- * picker, width slider, dashed checkbox, polygon side count, and text
- * options - and implements {@link ToolSettings} so every open tab can read
- * them without needing to know they live here. It also owns the menus; the
- * Edit menu simply forwards to whichever tab is currently selected.</p>
+ * <p>This class owns the toolbar controls and implements
+ * {@link ToolSettings} so every open tab can read them without needing to
+ * know they live here. It also owns the menus (the Edit menu simply
+ * forwards to whichever tab is selected), the autosave countdown
+ * ({@link AutosaveTimer}) and the web server ({@link ImageWebServer}).</p>
  */
 public class PaintApp extends Application implements ToolSettings {
 
@@ -64,6 +76,42 @@ public class PaintApp extends Application implements ToolSettings {
     private final Spinner<Integer> sidesSpinner = makeIntSpinner(3, 100, 5);
     private final TextField textField = new TextField();
     private final Spinner<Integer> fontSizeSpinner = makeIntSpinner(6, 300, 32);
+    private final Spinner<Integer> starPointsSpinner = makeIntSpinner(Geometry.MIN_STAR_POINTS, 100, 5);
+
+    private final CheckBox autosaveCheckBox = new CheckBox("Autosave every");
+    private final Spinner<Integer> autosaveSecondsSpinner = makeIntSpinner(AutosaveTimer.MIN_SECONDS, 3600, 60);
+    private final CheckBox showCountdownCheckBox = new CheckBox("Show countdown");
+    private final Label countdownLabel = new Label();
+    private final Label autosaveStatusLabel = new Label();
+    private final AutosaveTimer autosaveTimer =
+            new AutosaveTimer(60, this::autosaveAllTabs);
+    private final Timeline autosaveClock = new Timeline(
+            new KeyFrame(Duration.seconds(1), event -> tickAutosave()));
+
+    private final CheckBox webServerCheckBox = new CheckBox("Web server on port");
+    private final Spinner<Integer> webPortSpinner = makeIntSpinner(1024, 65535, 8080);
+    private final CheckBox shareTabCheckBox = new CheckBox("Share this tab");
+    private final Label webLinkLabel = new Label();
+    private final ImageWebServer webServer = new ImageWebServer(new ImageWebServer.ImageSource() {
+        @Override
+        public List<String> names() {
+            return onFxThread(() -> {
+                List<String> names = new ArrayList<>();
+                for (ImageCanvasTab shared : sharedTabs()) {
+                    names.add(shared.getDisplayName());
+                }
+                return names;
+            }, new ArrayList<>());
+        }
+
+        @Override
+        public byte[] png(int index) {
+            return onFxThread(() -> {
+                List<ImageCanvasTab> shared = sharedTabs();
+                return (index >= 0 && index < shared.size()) ? shared.get(index).toPngBytes() : null;
+            }, null);
+        }
+    });
 
     private Stage window;
 
@@ -94,22 +142,35 @@ public class PaintApp extends Application implements ToolSettings {
         toolRow2.setPadding(new Insets(2, 5, 2, 5));
 
         textField.setPromptText("Text for the Text tool");
-        textField.setPrefColumnCount(18);
+        textField.setPrefColumnCount(14);
         sidesSpinner.setPrefWidth(75);
+        starPointsSpinner.setPrefWidth(75);
         fontSizeSpinner.setPrefWidth(80);
         HBox toolRow3 = new HBox(10,
                 new Label("Polygon sides:"), sidesSpinner,
+                new Label("Star points:"), starPointsSpinner,
                 new Label("Text:"), textField,
                 new Label("Text size:"), fontSizeSpinner);
-        toolRow3.setPadding(new Insets(2, 5, 5, 5));
+        toolRow3.setPadding(new Insets(2, 5, 2, 5));
 
-        VBox top = new VBox(makeMenuBar(), toolRow1, toolRow2, toolRow3);
+        setUpAutosave();
+        autosaveSecondsSpinner.setPrefWidth(85);
+        HBox toolRow4 = new HBox(10, autosaveCheckBox, autosaveSecondsSpinner, new Label("seconds"),
+                showCountdownCheckBox, countdownLabel, autosaveStatusLabel);
+        toolRow4.setPadding(new Insets(2, 5, 2, 5));
+
+        setUpWebServer();
+        webPortSpinner.setPrefWidth(90);
+        HBox toolRow5 = new HBox(10, webServerCheckBox, webPortSpinner, shareTabCheckBox, webLinkLabel);
+        toolRow5.setPadding(new Insets(2, 5, 5, 5));
+
+        VBox top = new VBox(makeMenuBar(), toolRow1, toolRow2, toolRow3, toolRow4, toolRow5);
 
         BorderPane layout = new BorderPane();
         layout.setTop(top);
         layout.setCenter(tabPane);
 
-        Scene scene = new Scene(layout, 900, 700);
+        Scene scene = new Scene(layout, 1000, 700);
         stage.setScene(scene);
         stage.setTitle("Paint");
 
@@ -121,6 +182,13 @@ public class PaintApp extends Application implements ToolSettings {
         });
 
         stage.show();
+    }
+
+    /** Called by JavaFX when the program is closing: shut down the clock and the web server. */
+    @Override
+    public void stop() {
+        autosaveClock.stop();
+        webServer.stop();
     }
 
     // ------------------------------------------------------------------
@@ -164,6 +232,11 @@ public class PaintApp extends Application implements ToolSettings {
     @Override
     public int getPolygonSides() {
         return sidesSpinner.getValue();
+    }
+
+    @Override
+    public int getStarPoints() {
+        return starPointsSpinner.getValue();
     }
 
     @Override
@@ -386,27 +459,81 @@ public class PaintApp extends Application implements ToolSettings {
         writeAndReport(current, current.getCurrentFile());
     }
 
-    /** Asks the active tab's user where to save, then saves there. */
+    /**
+     * Asks the user where to save, then saves there. If the chosen format
+     * is different from the picture's original format and could lose
+     * something (JPEG, BMP), a warning explains what and asks first.
+     */
     private void saveAs() {
         ImageCanvasTab current = activeTab();
 
         FileChooser chooser = new FileChooser();
         chooser.setTitle("Save Image As");
-        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PNG image", "*.png"));
-        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("JPEG image", "*.jpg", "*.jpeg"));
-        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("BMP image", "*.bmp"));
+        FileChooser.ExtensionFilter png = new FileChooser.ExtensionFilter("PNG image", "*.png");
+        FileChooser.ExtensionFilter jpg = new FileChooser.ExtensionFilter("JPEG image", "*.jpg", "*.jpeg");
+        FileChooser.ExtensionFilter bmp = new FileChooser.ExtensionFilter("BMP image", "*.bmp");
+        chooser.getExtensionFilters().addAll(png, jpg, bmp);
+        switch (current.getOriginalFormat()) {
+            case "jpg":
+                chooser.setSelectedExtensionFilter(jpg);
+                break;
+            case "bmp":
+                chooser.setSelectedExtensionFilter(bmp);
+                break;
+            default:
+                chooser.setSelectedExtensionFilter(png);
+                break;
+        }
         File file = chooser.showSaveDialog(window);
 
         if (file == null) {
             return;
         }
+
+        // A name with no extension (or one we cannot write) gets the extension
+        // of the filter that was selected, so the file name matches its contents.
+        String typed = ImageFormats.extensionOf(file);
+        if (typed == null || !(typed.equals("png") || typed.equals("jpg")
+                || typed.equals("jpeg") || typed.equals("bmp"))) {
+            FileChooser.ExtensionFilter chosen = chooser.getSelectedExtensionFilter();
+            String pattern = (chosen == null) ? "*.png" : chosen.getExtensions().get(0);
+            file = new File(file.getPath() + pattern.substring(1));
+        }
+
+        String warning = ImageFormats.warningFor(current.getOriginalFormat(),
+                ImageFormats.extensionOf(file), current.hasTransparency());
+        if (warning != null && !confirmFormatLoss(warning)) {
+            return;
+        }
         writeAndReport(current, file);
     }
 
-    /** Runs {@link ImageCanvasTab#writeToFile} and shows an error message if it fails. */
+    /**
+     * Shows the data-loss warning for a format change.
+     *
+     * @param warning the explanation from {@link ImageFormats#warningFor}
+     * @return true if the user chose to save anyway
+     */
+    private boolean confirmFormatLoss(String warning) {
+        ButtonType saveAnyway = new ButtonType("Save anyway", ButtonBar.ButtonData.OK_DONE);
+        Alert alert = new Alert(AlertType.WARNING, warning, saveAnyway, ButtonType.CANCEL);
+        alert.setTitle("Image data may be lost");
+        alert.setHeaderText("Changing the file format");
+        alert.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
+        Optional<ButtonType> result = alert.showAndWait();
+        return result.isPresent() && result.get() == saveAnyway;
+    }
+
+    /**
+     * Runs {@link ImageCanvasTab#writeToFile}, shows an error message if it
+     * fails, and restarts the autosave countdown when it works (the picture
+     * was just saved, so there is nothing for autosave to do yet).
+     */
     private void writeAndReport(ImageCanvasTab tab, File file) {
         try {
             tab.writeToFile(file);
+            autosaveTimer.reset();
+            updateCountdownLabel();
         } catch (IOException e) {
             showMessage("The image could not be saved: " + e.getMessage());
         }
@@ -450,6 +577,148 @@ public class PaintApp extends Application implements ToolSettings {
     }
 
     // ------------------------------------------------------------------
+    // Autosave
+    // ------------------------------------------------------------------
+
+    /** Connects the autosave controls to the timer and starts the one-second clock. */
+    private void setUpAutosave() {
+        autosaveCheckBox.selectedProperty().addListener((obs, was, isOn) -> {
+            if (isOn) {
+                autosaveTimer.setIntervalSeconds(autosaveSecondsSpinner.getValue());
+                autosaveTimer.start();
+            } else {
+                autosaveTimer.stop();
+            }
+            updateCountdownLabel();
+        });
+        autosaveSecondsSpinner.valueProperty().addListener((obs, oldValue, newValue) -> {
+            autosaveTimer.setIntervalSeconds(newValue);
+            updateCountdownLabel();
+        });
+        showCountdownCheckBox.selectedProperty().addListener((obs, was, isOn) -> updateCountdownLabel());
+
+        autosaveClock.setCycleCount(Timeline.INDEFINITE);
+        autosaveClock.play();
+        updateCountdownLabel();
+    }
+
+    /** Runs once a second: counts the timer down and refreshes the label. */
+    private void tickAutosave() {
+        autosaveTimer.tick();
+        updateCountdownLabel();
+    }
+
+    /** Shows or hides the countdown, depending on the "Show countdown" box and whether autosave is on. */
+    private void updateCountdownLabel() {
+        boolean visible = showCountdownCheckBox.isSelected() && autosaveTimer.isRunning();
+        countdownLabel.setVisible(visible);
+        countdownLabel.setManaged(visible);
+        countdownLabel.setText("Next autosave in " + AutosaveTimer.format(autosaveTimer.getRemainingSeconds()));
+    }
+
+    /**
+     * Saves every tab that has unsaved changes. A tab that already has a
+     * file is saved to that file; a tab that has never been saved gets a
+     * backup copy in a PaintAutosave folder in the user's home folder (the
+     * tab itself stays "unsaved"). A tab in the middle of a mouse drag is
+     * skipped and picked up on the next round.
+     */
+    private void autosaveAllTabs() {
+        int saved = 0;
+        int number = 0;
+        String failure = null;
+
+        for (Tab tab : tabPane.getTabs()) {
+            number++;
+            ImageCanvasTab imageTab = (ImageCanvasTab) tab.getUserData();
+            if (!imageTab.isUnsaved() || imageTab.isBusy()) {
+                continue;
+            }
+            try {
+                if (imageTab.getCurrentFile() != null) {
+                    imageTab.writeToFile(imageTab.getCurrentFile());
+                } else {
+                    File folder = new File(System.getProperty("user.home"), "PaintAutosave");
+                    folder.mkdirs();
+                    imageTab.writeCopy(new File(folder, "untitled-" + number + ".png"));
+                }
+                saved++;
+            } catch (IOException e) {
+                failure = e.getMessage();
+            }
+        }
+
+        String time = LocalTime.now().format(DateTimeFormatter.ofPattern("h:mm:ss a"));
+        autosaveStatusLabel.setText(failure != null
+                ? "Autosave failed at " + time + ": " + failure
+                : "Last autosave: " + time + " (" + saved + " saved)");
+    }
+
+    // ------------------------------------------------------------------
+    // Web server
+    // ------------------------------------------------------------------
+
+    /** Connects the web server controls: starting/stopping it and choosing which tabs to share. */
+    private void setUpWebServer() {
+        webServerCheckBox.setOnAction(event -> {
+            if (webServerCheckBox.isSelected()) {
+                try {
+                    webServer.start(webPortSpinner.getValue());
+                    webPortSpinner.setDisable(true);
+                    webLinkLabel.setText("Open http://localhost:" + webServer.getPort() + "/");
+                } catch (IOException e) {
+                    webServerCheckBox.setSelected(false);
+                    showMessage("The web server could not start on port " + webPortSpinner.getValue()
+                            + " (is something else using it?): " + e.getMessage());
+                }
+            } else {
+                webServer.stop();
+                webPortSpinner.setDisable(false);
+                webLinkLabel.setText("");
+            }
+        });
+
+        shareTabCheckBox.setOnAction(event -> activeTab().setShared(shareTabCheckBox.isSelected()));
+        // Each tab remembers whether it is shared, so the box follows the selected tab.
+        tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) ->
+                shareTabCheckBox.setSelected(newTab != null && ((ImageCanvasTab) newTab.getUserData()).isShared()));
+    }
+
+    /** @return the tabs the user chose to share, in tab order. Call on the JavaFX thread. */
+    private List<ImageCanvasTab> sharedTabs() {
+        List<ImageCanvasTab> shared = new ArrayList<>();
+        for (Tab tab : tabPane.getTabs()) {
+            ImageCanvasTab imageTab = (ImageCanvasTab) tab.getUserData();
+            if (imageTab.isShared()) {
+                shared.add(imageTab);
+            }
+        }
+        return shared;
+    }
+
+    /**
+     * Runs a job on the JavaFX thread and waits for the answer. The web
+     * server answers requests on its own threads, but tabs and canvases may
+     * only be touched from the JavaFX thread.
+     *
+     * @param job      what to run
+     * @param fallback the answer to give if the job fails or takes too long
+     * @return the job's result, or the fallback
+     */
+    private static <T> T onFxThread(Callable<T> job, T fallback) {
+        try {
+            if (Platform.isFxApplicationThread()) {
+                return job.call();
+            }
+            FutureTask<T> task = new FutureTask<>(job);
+            Platform.runLater(task);
+            return task.get(5, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
+
+    // ------------------------------------------------------------------
     // Dialogs
     // ------------------------------------------------------------------
 
@@ -481,6 +750,8 @@ public class PaintApp extends Application implements ToolSettings {
                 + "Right Triangle: the right angle is where you press the mouse.\n"
                 + "Regular Polygon: press at the center and drag outward; set the number of sides\n"
                 + "with the \"Polygon sides\" box (3 sides gives an equilateral triangle).\n"
+                + "Star: drag out a box; set the number of points (4 or more) with \"Star points\".\n"
+                + "Four points makes a diamond.\n"
                 + "Text: type into the Text box, pick the Text tool, then drag - the text follows\n"
                 + "the mouse and is placed where you let go.\n"
                 + "Select: drag a rectangle, then drag inside it to move that piece. Edit > Copy,\n"
@@ -488,6 +759,12 @@ public class PaintApp extends Application implements ToolSettings {
                 + "right away. Click outside the piece to put it down.\n"
                 + "Edit > Undo / Redo step through your edits (up to 40 per tab).\n"
                 + "Clear Canvas (button or Edit menu) asks first, and can be undone.\n"
+                + "Autosave: tick \"Autosave every\", set the seconds, and tick \"Show countdown\" to\n"
+                + "see the timer. Saving by hand restarts the countdown.\n"
+                + "Web server: tick \"Web server on port\", tick \"Share this tab\" on the tabs to show,\n"
+                + "then open the link in a browser. Nothing shared shows a message instead.\n"
+                + "Save As to a different format (JPEG, BMP) warns first, because transparency and\n"
+                + "exact colors can be lost.\n"
                 + "Pick a color and line width - the label by the color swatch shows its name,\n"
                 + "hex code, and RGB value. \"Dashed\" draws dashed lines and outlines.\n"
                 + "Color Grabber sets the color from a pixel you click. Right-clicking does the\n"

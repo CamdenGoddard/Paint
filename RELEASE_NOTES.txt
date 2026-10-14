@@ -1,75 +1,77 @@
-Camden's Pain(t)  Version 0.4.0  -  10/04/2026
+Camden's Pain(t)  Version 0.5.0  -  10/14/2026
 =============================================
 
-Sprint 4 submission for CS 250.
+Sprint 5 submission for CS 250.
 
 Source code:
   GitHub repo:  https://github.com/CamdenGoddard/Paint
-  Tag / release:  v0.4.0  (https://github.com/CamdenGoddard/Paint/releases/tag/v0.4.0)
-  This tag matches the code uploaded in the sprint 4 zip.
+  Tag / release:  v0.5.0  (https://github.com/CamdenGoddard/Paint/releases/tag/v0.5.0)
+  This tag matches the code uploaded in the sprint 5 zip.
 
 New features:
-  * Undo and Redo (Edit menu, Ctrl+Z / Ctrl+Y). Each tab has its own
-    history, built from two stacks (UndoHistory.java): every edit pushes a
-    "before" snapshot onto the undo stack; undoing pops it and pushes the
-    current picture onto the redo stack; a brand-new edit empties the redo
-    stack. History is capped at 40 steps per tab so memory stays bounded.
-  * Blank starting image: the program opens with a blank white canvas, and
-    File > New Tab (Ctrl+N) gives another one.
-  * Clear Canvas (button in the toolbar, or Edit > Clear Canvas,
-    Ctrl+Shift+C). It asks "are you sure" first, and can be undone.
-  * One more shape of my choice: a five-pointed Star.
-  * Regular Polygon with any number of sides (3 to 100, set in the
-    "Polygon sides" box). Press at the center and drag outward; the first
-    corner follows the mouse, so it rotates as you drag. With 3 sides it is
-    an equilateral triangle.
-  * Triangles: "Right Triangle" puts the right angle exactly where you
-    press the mouse, with legs running horizontally and vertically.
-    "Triangle (isosceles)" is the Sprint 3 triangle, and the 3-sided
-    polygon is an equilateral triangle - neither of those has a right
-    angle.
-  * Select tool: drag out a rectangle (shown with a dashed outline), then
-    drag inside it to move that piece of the image. The piece moves live
-    while you drag and leaves white behind.
-  * Edit > Copy, Cut and Paste (Ctrl+C / Ctrl+X / Ctrl+V) work on the
-    selection, including between tabs. A pasted
-    piece appears just down and right of the original, already selected, and can be dragged into
-    place right away.
-  * Text tool: type text into the "Text" box (size in "Text size"), pick
-    the Text tool, then press and drag on the image. The text follows the
-    mouse as a live preview and is placed where you let go.
-  * "Live draw": every shape, the text, and moving or pasting a selection
-    previews while the mouse is down, and only becomes part of the image
-    (and one undo step) when it is finished.
-  * Tabs and git are used as in earlier sprints.
-  * Small fixes: letting go of the right mouse button mid-drag no longer
-    ends a left-button drag early, and shape previews no longer leave
-    trails over transparent parts of an opened PNG.
+  * Unit tests: 23 JUnit tests in src/test/java (run them with "mvn test",
+    or right-click the test folder in IntelliJ and choose Run Tests). They
+    cover the star/polygon geometry (GeometryTest), the autosave countdown
+    (AutosaveTimerTest), saving in other formats (ImageFormatsTest) and the
+    web server (ImageWebServerTest).
+  * Star with a variable number of points: pick the Star tool, set "Star
+    points" (4 to 100), and drag out a box. 4 points is a diamond; 5 and up
+    are stars. The first point is straight up.
+  * Autosave: tick "Autosave every", pick how many seconds (5 to 3600), and
+    every tab with unsaved changes is saved when the countdown ends. A tab
+    that already has a file is saved to that file. A tab that was never
+    saved gets a backup copy in the PaintAutosave folder in your home folder
+    (and stays marked unsaved). A tab in the middle of a mouse drag is
+    skipped until the next round. It runs on the JavaFX timeline, once a
+    second, so no extra threads are needed.
+  * The countdown is optional: tick "Show countdown" to see "Next autosave
+    in m:ss". The label next to it shows when the last autosave happened.
+    Saving by hand (Save or Save As) restarts the countdown.
+  * Web server: tick "Web server on port" (default 8080), tick "Share this
+    tab" on each tab you want to show, then open http://localhost:8080/ in a
+    browser. The page shows every shared tab, reloads itself every 5
+    seconds, and shows a message instead when no tab is shared. Only this
+    computer can connect.
+  * Saving in another format: Save As can write PNG, JPEG or BMP, whatever
+    the picture started as. If the new format could lose something (JPEG:
+    lossy and no transparency; BMP: no transparency) a warning explains what,
+    says so specifically when the picture has see-through areas, and lets you
+    cancel. How this is proven is in TEST_PLAN.md.
 
 Design notes / assumptions:
-  * Undo works by keeping a full snapshot of the canvas before each edit.
-    That is simple and easy to get right, at the cost of memory (hence the
-    40-step cap).
-  * Moving a selection cuts it out, leaving white. Anything dragged
-    partly off the edge of the canvas is cropped when it is put down.
-  * Selecting, moving and pasting are one undo step each (the whole move
-    undoes at once, not pixel by pixel).
-  * The selection outline is drawn on a separate transparent layer, so it
-    never ends up in a saved file or in an undo snapshot.
+  * The new logic is in small classes of its own: Geometry (corner math),
+    AutosaveTimer (the countdown), ImageWebServer (the server) and
+    ImageFormats (saving and the warning text), so each can be unit tested
+    without opening a window.
+  * Save As now adds the selected filter's extension when the typed name has
+    none (or one that isn't PNG/JPG/BMP), so the file name matches what is in it.
+  * Pictures are now saved with a transparent background, so see-through
+    areas of an opened PNG stay see-through when saved as PNG. Before this
+    they were flattened onto white.
+  * The web server asks the JavaFX thread for each picture, so you always
+    see what is on screen, including edits not yet saved.
 
 Known issues:
+  * The web server is local only and has no password; stop it when you are
+    done with it.
+  * Autosave to a JPEG file re-compresses it each time, which slowly
+    degrades the picture. Use PNG for pictures you edit a lot.
   * The selection can only be a rectangle, and text can't be edited or
     moved once it has been placed (use Undo and place it again).
   * Text uses the default font only.
-  * Undo history is lost when a tab is closed or reset, and a very large
-    opened image uses a lot of memory per undo step.
-  * If you type a file name with an extension Save As doesn't offer
-    (something other than .png/.jpg/.bmp), it silently saves as PNG - same
-    as Sprint 2.
+  * Undo history is lost when a tab is closed or reset.
   * The color-name label only recognizes a curated list of common colors;
     anything else reads as "Custom" rather than the closest match.
 
-Critique (current state and code quality):
+Earlier sprints (still in the program):
+  * Sprint 4: undo/redo built on two stacks, blank starting image, clear
+    canvas with an "are you sure" check, regular polygon with any number of
+    sides, right triangle, rectangle select with move/copy/cut/paste, text
+    tool, tabs.
+  * Sprints 1-3: open/save, drawing tools and shapes, color picker, line
+    width, dashed outlines, keyboard shortcuts, unsaved-changes warning.
+
+Critique from Sprint 4 (still applies):
   The program does everything the Sprint 4 list asks for and the features
   work. ShapeDrawer, UndoHistory and ToolSettings are small and each do one
   job. The weak spot is ImageCanvasTab.java (about 800 lines), which mixes
@@ -77,4 +79,4 @@ Critique (current state and code quality):
   need to add more files to the program.
 
 Expected next sprint:
-  * Whatever Week 5 adds.
+  * Whatever Week 6 adds.

@@ -74,6 +74,13 @@ public interface ToolSettings {
     int getPolygonSides();
 
     /**
+     * Returns how many points the Star tool should draw.
+     *
+     * @return the number of star points, always at least 4 (4 is a diamond)
+     */
+    int getStarPoints();
+
+    /**
      * Returns the text the Text tool should place on the image.
      *
      * @return the text typed into the toolbar's text box; may be empty,

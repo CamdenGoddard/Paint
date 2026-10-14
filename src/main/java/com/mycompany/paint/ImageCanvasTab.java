@@ -1,10 +1,9 @@
 package com.mycompany.paint;
 
-import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.util.Locale;
 
 import javax.imageio.ImageIO;
 
@@ -89,6 +88,16 @@ public final class ImageCanvasTab {
     /** True any time this tab's canvas has changes that have not been saved. */
     private boolean unsavedChanges;
 
+    /**
+     * The format this picture started out in ("png", "jpg" or "bmp"): the
+     * opened file's format, or PNG for a blank canvas. Save As compares the
+     * new format against this to decide whether to warn about data loss.
+     */
+    private String originalFormat = ImageFormats.DEFAULT_FORMAT;
+
+    /** True while the user has chosen to show this tab on the web server. */
+    private boolean shared;
+
     /** Where the current drag started, in canvas coordinates. Only meaningful mid-drag. */
     private double dragStartX;
     private double dragStartY;
@@ -167,6 +176,9 @@ public final class ImageCanvasTab {
             gc.drawImage(image, 0, 0);
         }
         currentFile = file;
+        if (file != null) {
+            originalFormat = ImageFormats.normalize(ImageFormats.extensionOf(file));
+        }
 
         tab = new Tab();
         tab.setContent(new ScrollPane(new Pane(canvas, overlay)));
@@ -215,27 +227,113 @@ public final class ImageCanvasTab {
     public void writeToFile(File file) throws IOException {
         commitFloating(); // a piece still being moved should be saved where it sits
 
-        String extension = extensionOf(file);
-        if (extension == null) {
-            extension = "png";
-        }
-
-        WritableImage snapshot = canvas.snapshot(null, null);
-        BufferedImage picture = SwingFXUtils.fromFXImage(snapshot, null);
-
-        // JPG and BMP don't support transparency, so flatten onto white first.
-        if (extension.equals("jpg") || extension.equals("jpeg") || extension.equals("bmp")) {
-            BufferedImage flattened = new BufferedImage(
-                    picture.getWidth(), picture.getHeight(), BufferedImage.TYPE_INT_RGB);
-            Graphics2D g = flattened.createGraphics();
-            g.drawImage(picture, 0, 0, java.awt.Color.WHITE, null);
-            g.dispose();
-            picture = flattened;
-        }
-
-        ImageIO.write(picture, extension, file);
+        ImageFormats.write(currentPicture(), file);
         currentFile = file;
+        originalFormat = ImageFormats.normalize(ImageFormats.extensionOf(file));
         markSaved();
+    }
+
+    /**
+     * Writes the picture to a file without changing anything about this
+     * tab: it keeps its file name and its unsaved flag. Autosave uses this
+     * for tabs that have never been saved, so a backup copy exists without
+     * pretending the user saved.
+     *
+     * @param file where to write the copy
+     * @throws IOException if the image could not be written
+     */
+    public void writeCopy(File file) throws IOException {
+        ImageFormats.write(currentPicture(), file);
+    }
+
+    /**
+     * Returns the picture as PNG bytes, for the web server.
+     *
+     * @return the canvas encoded as a PNG file's bytes
+     * @throws IOException if encoding fails
+     */
+    public byte[] toPngBytes() throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(currentPicture(), "png", out);
+        return out.toByteArray();
+    }
+
+    /**
+     * Takes a picture of the canvas as it looks right now. The background is
+     * left transparent (the default would be white), so see-through areas of
+     * an opened PNG stay see-through when the picture is saved as PNG.
+     *
+     * @return the canvas as an AWT image
+     */
+    private BufferedImage currentPicture() {
+        SnapshotParameters params = new SnapshotParameters();
+        params.setFill(Color.TRANSPARENT);
+        return SwingFXUtils.fromFXImage(canvas.snapshot(params, null), null);
+    }
+
+    /**
+     * Reports whether any pixel of the picture is see-through. Used to make
+     * the Save As warning specific.
+     *
+     * @return true if at least one pixel is not fully opaque
+     */
+    public boolean hasTransparency() {
+        BufferedImage picture = currentPicture();
+        for (int y = 0; y < picture.getHeight(); y++) {
+            for (int x = 0; x < picture.getWidth(); x++) {
+                if ((picture.getRGB(x, y) >>> 24) != 0xFF) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Reports whether the user is in the middle of a drag (drawing a shape,
+     * a stroke, or moving a selection). Autosave leaves such a tab alone so
+     * it never interrupts the user's mouse action.
+     *
+     * @return true while a drag is in progress
+     */
+    public boolean isBusy() {
+        return dragSnapshot != null || selectDrag != SelectDrag.NONE;
+    }
+
+    /**
+     * Returns the format this picture started out in.
+     *
+     * @return "png", "jpg" or "bmp"
+     */
+    public String getOriginalFormat() {
+        return originalFormat;
+    }
+
+    /**
+     * Returns the name shown on the tab, without the unsaved-changes asterisk.
+     *
+     * @return the file name, or "Untitled" if the tab was never saved
+     */
+    public String getDisplayName() {
+        return (currentFile != null) ? currentFile.getName() : "Untitled";
+    }
+
+    /**
+     * Reports whether this tab is currently shown on the web server.
+     *
+     * @return true if the user chose to share this tab
+     */
+    public boolean isShared() {
+        return shared;
+    }
+
+    /**
+     * Chooses whether this tab is shown on the web server.
+     *
+     * @param shared true to share this tab's picture
+     */
+    public void setShared(boolean shared) {
+        this.shared = shared;
     }
 
     /**
@@ -452,7 +550,7 @@ public final class ImageCanvasTab {
      * "Untitled"), with a trailing asterisk while there are unsaved changes.
      */
     private void updateTabTitle() {
-        String name = (currentFile != null) ? currentFile.getName() : "Untitled";
+        String name = getDisplayName();
         tab.setText(unsavedChanges ? name + " *" : name);
     }
 
@@ -612,7 +710,8 @@ public final class ImageCanvasTab {
             gc.fillText(settings.getText(), x, y);
         } else {
             applyStrokeSettings(tool);
-            ShapeDrawer.draw(gc, tool, dragStartX, dragStartY, x, y, settings.getPolygonSides());
+            ShapeDrawer.draw(gc, tool, dragStartX, dragStartY, x, y,
+                    settings.getPolygonSides(), settings.getStarPoints());
         }
     }
 
@@ -808,20 +907,5 @@ public final class ImageCanvasTab {
     /** Keeps a coordinate inside 0..max. */
     private static double clamp(double value, double max) {
         return Math.max(0, Math.min(max, value));
-    }
-
-    /**
-     * Lower-case file extension without the dot, or null if there isn't one.
-     *
-     * @param file the file to inspect
-     * @return e.g. "png" for "drawing.PNG", or null for "drawing" or "drawing."
-     */
-    private static String extensionOf(File file) {
-        String name = file.getName();
-        int dot = name.lastIndexOf('.');
-        if (dot < 0 || dot == name.length() - 1) {
-            return null;
-        }
-        return name.substring(dot + 1).toLowerCase(Locale.ROOT);
     }
 }

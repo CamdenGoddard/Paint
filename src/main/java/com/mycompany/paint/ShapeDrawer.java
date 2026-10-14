@@ -41,9 +41,10 @@ final class ShapeDrawer {
      * @param x2    drag end (current) x
      * @param y2    drag end (current) y
      * @param sides how many sides the Regular Polygon tool should have
+     * @param starPoints how many points the Star tool should have (4 or more)
      */
     static void draw(GraphicsContext gc, DrawTool tool,
-                     double x1, double y1, double x2, double y2, int sides) {
+                     double x1, double y1, double x2, double y2, int sides, int starPoints) {
         double minX = Math.min(x1, x2);
         double minY = Math.min(y1, y2);
         double width = Math.abs(x2 - x1);
@@ -103,7 +104,7 @@ final class ShapeDrawer {
                 break;
 
             case STAR:
-                drawStar(gc, minX, minY, width, height);
+                drawStar(gc, minX, minY, width, height, starPoints);
                 break;
 
             default:
@@ -119,44 +120,20 @@ final class ShapeDrawer {
      */
     private static void drawRegularPolygon(GraphicsContext gc, double cx, double cy,
                                            double mouseX, double mouseY, int sides) {
-        int n = Math.max(3, sides);
-        double radius = Math.hypot(mouseX - cx, mouseY - cy);
-        if (radius < 1) {
-            return; // nothing to draw until the mouse moves away from the center
+        double[][] corners = Geometry.regularPolygon(cx, cy, mouseX, mouseY, sides);
+        if (corners != null) {
+            gc.strokePolygon(corners[0], corners[1], corners[0].length);
         }
-        double firstAngle = Math.atan2(mouseY - cy, mouseX - cx);
-
-        double[] xs = new double[n];
-        double[] ys = new double[n];
-        for (int i = 0; i < n; i++) {
-            double angle = firstAngle + 2 * Math.PI * i / n;
-            xs[i] = cx + radius * Math.cos(angle);
-            ys[i] = cy + radius * Math.sin(angle);
-        }
-        gc.strokePolygon(xs, ys, n);
     }
 
     /**
-     * Draws a five-pointed star whose outer points reach the edges of the
-     * given box (stretched to fit it, so a wide drag makes a wide star).
-     * The ten corners alternate between the outer radius and an inner
-     * radius of about 38% of it, which is what makes a classic star shape.
+     * Draws a star with the given number of points (4 or more) whose outer
+     * points reach the edges of the given box, stretched to fit it so a wide
+     * drag makes a wide star. See {@link Geometry#star} for the corner math.
      */
-    private static void drawStar(GraphicsContext gc, double x, double y, double w, double h) {
-        double cx = x + w / 2.0;
-        double cy = y + h / 2.0;
-        double rx = w / 2.0;
-        double ry = h / 2.0;
-        double innerRatio = 0.382;
-
-        double[] xs = new double[10];
-        double[] ys = new double[10];
-        for (int i = 0; i < 10; i++) {
-            double angle = -Math.PI / 2 + i * Math.PI / 5; // first point straight up
-            double scale = (i % 2 == 0) ? 1.0 : innerRatio;
-            xs[i] = cx + rx * scale * Math.cos(angle);
-            ys[i] = cy + ry * scale * Math.sin(angle);
-        }
-        gc.strokePolygon(xs, ys, 10);
+    private static void drawStar(GraphicsContext gc, double x, double y,
+                                 double w, double h, int points) {
+        double[][] corners = Geometry.star(x + w / 2.0, y + h / 2.0, w / 2.0, h / 2.0, points);
+        gc.strokePolygon(corners[0], corners[1], corners[0].length);
     }
 }
