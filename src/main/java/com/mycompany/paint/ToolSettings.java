@@ -94,4 +94,14 @@ public interface ToolSettings {
      * @return the font size, in pixels
      */
     double getFontSize();
+
+    /**
+     * Records something the user did in the activity log. The default does
+     * nothing, so a settings object that does not keep a log can ignore it.
+     *
+     * @param fileName the picture's file name, or "new tab" if never saved
+     * @param message  what happened
+     */
+    default void log(String fileName, String message) {
+    }
 }

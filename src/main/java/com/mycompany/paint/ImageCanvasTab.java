@@ -95,6 +95,9 @@ public final class ImageCanvasTab {
      */
     private String originalFormat = ImageFormats.DEFAULT_FORMAT;
 
+    /** The last color written to the log by the color grabber, so a drag does not log the same color over and over. */
+    private String lastGrabbedHex = "";
+
     /** True while the user has chosen to show this tab on the web server. */
     private boolean shared;
 
@@ -319,6 +322,39 @@ public final class ImageCanvasTab {
     }
 
     /**
+     * Returns the name used in the activity log.
+     *
+     * @return the file name, or "new tab" if this picture was never saved
+     */
+    public String getLogName() {
+        return (currentFile != null) ? currentFile.getName() : "new tab";
+    }
+
+    /** Writes one line to the activity log, tagged with this tab's file name. */
+    private void log(String message) {
+        settings.log(getLogName(), message);
+    }
+
+    /** The current color, width and dash setting, as text for the log. */
+    private String strokeDescription() {
+        return "color " + hex(settings.getColor()) + ", width " + (int) settings.getLineWidth()
+                + (settings.isDashed() ? ", dashed" : "");
+    }
+
+    /** A color as #RRGGBB. */
+    private static String hex(Color color) {
+        return String.format("#%02X%02X%02X",
+                (int) Math.round(color.getRed() * 255),
+                (int) Math.round(color.getGreen() * 255),
+                (int) Math.round(color.getBlue() * 255));
+    }
+
+    /** Text for the log: a point as (x,y), rounded to whole pixels. */
+    private static String at(double x, double y) {
+        return "(" + Math.round(x) + "," + Math.round(y) + ")";
+    }
+
+    /**
      * Reports whether this tab is currently shown on the web server.
      *
      * @return true if the user chose to share this tab
@@ -374,6 +410,7 @@ public final class ImageCanvasTab {
         WritableImage previous = history.undo(snapshot());
         if (previous != null) {
             restore(previous);
+            log("Undo");
         }
     }
 
@@ -383,6 +420,7 @@ public final class ImageCanvasTab {
         WritableImage next = history.redo(snapshot());
         if (next != null) {
             restore(next);
+            log("Redo");
         }
     }
 
@@ -398,6 +436,82 @@ public final class ImageCanvasTab {
         hasSelection = false;
         redrawSelectionOverlay();
         markUnsaved();
+        log("Clear canvas");
+    }
+
+    /**
+     * Reports whether a piece of the picture is currently selected.
+     *
+     * @return true if there is a selection rectangle
+     */
+    public boolean hasSelection() {
+        return hasSelection;
+    }
+
+    /** Selects the whole picture, so it can be copied, moved or turned as one piece. */
+    public void selectAll() {
+        dropSelection();
+        selX = 0;
+        selY = 0;
+        selW = (int) canvas.getWidth();
+        selH = (int) canvas.getHeight();
+        hasSelection = true;
+        settings.setTool(DrawTool.SELECT);
+        redrawSelectionOverlay();
+        log("Selected everything (" + selW + "x" + selH + ")");
+    }
+
+    /**
+     * Rotates or mirrors the whole picture. A 90 or 270 degree turn swaps
+     * the canvas's width and height. This is one undoable step, and the
+     * undo puts the original size back too.
+     *
+     * @param op the rotation or flip to apply
+     */
+    public void transformCanvas(ImageTransforms.Op op) {
+        dropSelection();
+        WritableImage before = snapshot();
+        BufferedImage result = ImageTransforms.apply(currentPicture(), op);
+
+        history.record(before);
+        resizeTo(result.getWidth(), result.getHeight());
+        clearAndDraw(SwingFXUtils.toFXImage(result, null));
+        redrawSelectionOverlay();
+        markUnsaved();
+        log(op.label() + " applied to the whole canvas (now "
+                + result.getWidth() + "x" + result.getHeight() + ")");
+    }
+
+    /**
+     * Rotates or mirrors just the selected piece, turning it around its
+     * own center. The piece stays floating (like a piece being moved), so
+     * it can be dragged into place afterwards, and putting it down is one
+     * undoable step. Does nothing if nothing is selected.
+     *
+     * @param op the rotation or flip to apply
+     */
+    public void transformSelection(ImageTransforms.Op op) {
+        if (!hasSelection) {
+            return;
+        }
+        if (floating == null) {
+            liftSelection();
+        }
+        BufferedImage piece = SwingFXUtils.fromFXImage(floating, null);
+        BufferedImage result = ImageTransforms.apply(piece, op);
+
+        double centerX = selX + selW / 2.0;
+        double centerY = selY + selH / 2.0;
+        selW = result.getWidth();
+        selH = result.getHeight();
+        selX = (int) Math.round(centerX - selW / 2.0);
+        selY = (int) Math.round(centerY - selH / 2.0);
+        floating = SwingFXUtils.toFXImage(result, null);
+
+        renderFloating();
+        redrawSelectionOverlay();
+        markUnsaved();
+        log(op.label() + " applied to the selection (now " + selW + "x" + selH + ")");
     }
 
     /**
@@ -412,6 +526,7 @@ public final class ImageCanvasTab {
         appClipboard = piece;
         copiedX = selX;
         copiedY = selY;
+        log("Copied selection " + selW + "x" + selH + " from " + at(selX, selY));
 
         try {
             ClipboardContent content = new ClipboardContent();
@@ -448,6 +563,7 @@ public final class ImageCanvasTab {
         hasSelection = false;
         redrawSelectionOverlay();
         markUnsaved();
+        log("Cut selection");
     }
 
     /**
@@ -491,6 +607,7 @@ public final class ImageCanvasTab {
         renderFloating();
         redrawSelectionOverlay();
         markUnsaved();
+        log("Pasted " + selW + "x" + selH + " piece at " + at(selX, selY));
     }
 
     // ------------------------------------------------------------------
@@ -525,8 +642,23 @@ public final class ImageCanvasTab {
         gc.drawImage(picture, 0, 0);
     }
 
+    /**
+     * Gives the canvas and its selection overlay a new size. Resizing a
+     * canvas wipes it, so the caller draws the picture again afterwards.
+     * Rotating by 90 or 270 degrees changes the size, and so does undoing it.
+     */
+    private void resizeTo(int width, int height) {
+        if (canvas.getWidth() != width || canvas.getHeight() != height) {
+            canvas.setWidth(width);
+            canvas.setHeight(height);
+            overlay.setWidth(width);
+            overlay.setHeight(height);
+        }
+    }
+
     /** Puts an undo/redo snapshot back on the canvas and drops any selection. */
     private void restore(WritableImage picture) {
+        resizeTo((int) picture.getWidth(), (int) picture.getHeight());
         clearAndDraw(picture);
         hasSelection = false;
         redrawSelectionOverlay();
@@ -676,6 +808,8 @@ public final class ImageCanvasTab {
             if (dragSnapshot != null && strokeMoved) {
                 history.record(dragSnapshot);
                 markUnsaved();
+                log(tool + " stroke from " + at(dragStartX, dragStartY) + " to " + at(e.getX(), e.getY())
+                        + (tool == DrawTool.ERASER ? "" : ", " + strokeDescription()));
             }
             dragSnapshot = null;
         } else if (tool.isShape() || tool == DrawTool.TEXT) {
@@ -684,6 +818,13 @@ public final class ImageCanvasTab {
                 history.record(dragSnapshot);
                 dragSnapshot = null;
                 markUnsaved();
+                if (tool == DrawTool.TEXT) {
+                    log("Text \"" + settings.getText() + "\" placed at " + at(e.getX(), e.getY())
+                            + ", size " + (int) settings.getFontSize() + ", color " + hex(settings.getColor()));
+                } else {
+                    log(tool + " drawn from " + at(dragStartX, dragStartY) + " to " + at(e.getX(), e.getY())
+                            + ", " + strokeDescription());
+                }
             }
         } else if (tool == DrawTool.SELECT) {
             releaseSelect();
@@ -760,6 +901,11 @@ public final class ImageCanvasTab {
         }
         Color sampled = snapshot.getPixelReader().getColor(ix, iy);
         settings.setColor(sampled);
+        String sampledHex = hex(sampled);
+        if (!sampledHex.equals(lastGrabbedHex)) { // a right-click drag samples on every move; log each new color once
+            lastGrabbedHex = sampledHex;
+            log("Color grabbed " + sampledHex + " at " + at(x, y));
+        }
     }
 
     // ------------------------------------------------------------------
@@ -816,9 +962,15 @@ public final class ImageCanvasTab {
 
     /** Mouse released with the Select tool: throws away a selection too small to be on purpose. */
     private void releaseSelect() {
-        if (selectDrag == SelectDrag.SELECTING && (selW < 2 || selH < 2)) {
-            hasSelection = false;
-            redrawSelectionOverlay();
+        if (selectDrag == SelectDrag.SELECTING) {
+            if (selW < 2 || selH < 2) {
+                hasSelection = false;
+                redrawSelectionOverlay();
+            } else {
+                log("Selected area " + selW + "x" + selH + " at " + at(selX, selY));
+            }
+        } else if (selectDrag == SelectDrag.MOVING && floating != null) {
+            log("Moved selection to " + at(selX, selY));
         }
         selectDrag = SelectDrag.NONE;
     }

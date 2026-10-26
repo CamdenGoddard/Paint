@@ -7,5 +7,6 @@ Sprint 2: draw on the canvas, color picker, line width, PNG/JPG/BMP, Help menu, 
 Sprint 3: tabs for multiple images, seven more tools (line, four shapes, triangle, eyedropper, eraser), dashed outlines, keyboard shortcuts, color name/hex/RGB label, full JavaDoc.
 Sprint 4: undo/redo (stack-based), clear canvas with an "are you sure" check, right triangle, regular polygon with any number of sides, star, rectangle select with copy/cut/paste/move, text tool, and a written critique.
 Sprint 5: unit tests, star with a chosen number of points, autosave timer with optional countdown, web server that shows chosen tabs, and a data-loss warning when saving in a different format (see `TEST_PLAN.md`).
+Sprint 6: rotate and mirror (whole canvas or a selection), icon buttons and tooltips, keyboard shortcuts, operating-system notifications for autosave, and a threaded activity log.
 
 See `RELEASE_NOTES.txt` for details, including the critique.

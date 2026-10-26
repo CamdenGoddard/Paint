@@ -2,10 +2,13 @@ package com.mycompany.paint;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.FutureTask;
@@ -17,6 +20,8 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
+import javafx.geometry.Orientation;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
@@ -31,16 +36,21 @@ import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
+import javafx.scene.control.Separator;
 import javafx.scene.control.Slider;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToggleGroup;
+import javafx.scene.control.Tooltip;
 import javafx.scene.image.Image;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
@@ -50,11 +60,12 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
 /**
- * Sprint 5: everything from Sprint 4 (undo/redo, clear canvas, polygons,
- * select/copy/paste/move, text) plus a star with a chosen number of points,
- * an autosave timer with an optional on-screen countdown, a small web server
- * that shows the tabs the user picks, and a warning when Save As would lose
- * data by switching file formats. See {@link ImageCanvasTab} for what
+ * Sprint 6: everything from Sprint 5 (a star with a chosen number of points,
+ * an autosave timer with an optional countdown, a small web server, and a
+ * warning when Save As would lose data) plus rotating and mirroring (the
+ * whole canvas or just a selection), icon buttons and tooltips for the tools
+ * and common actions, operating-system notifications for autosave, and an
+ * activity log written by a background thread. See {@link ImageCanvasTab} for what
  * happens inside one tab, and {@link DrawTool} for what each tool does.
  *
  * <p>This class owns the toolbar controls and implements
@@ -87,6 +98,13 @@ public class PaintApp extends Application implements ToolSettings {
             new AutosaveTimer(60, this::autosaveAllTabs);
     private final Timeline autosaveClock = new Timeline(
             new KeyFrame(Duration.seconds(1), event -> tickAutosave()));
+
+    private final CheckBox notifyCheckBox = new CheckBox("Notifications");
+    private final Notifier notifier = new Notifier();
+    private ActionLogger logger;
+
+    private final ToggleGroup toolGroup = new ToggleGroup();
+    private final Map<DrawTool, ToggleButton> toolButtons = new EnumMap<>(DrawTool.class);
 
     private final CheckBox webServerCheckBox = new CheckBox("Web server on port");
     private final Spinner<Integer> webPortSpinner = makeIntSpinner(1024, 65535, 8080);
@@ -123,6 +141,13 @@ public class PaintApp extends Application implements ToolSettings {
     public void start(Stage stage) {
         window = stage;
 
+        try {
+            logger = new ActionLogger(Paths.get(System.getProperty("user.home"), "PaintLog", "paint-log.txt"));
+        } catch (IOException e) {
+            System.err.println("The activity log could not be opened: " + e.getMessage());
+        }
+        log("new tab", "Program started");
+
         toolSelector.getSelectionModel().selectFirst(); // DrawTool.PENCIL
 
         widthSlider.valueProperty().addListener((obs, oldVal, newVal) -> updateWidthLabel());
@@ -132,13 +157,15 @@ public class PaintApp extends Application implements ToolSettings {
 
         addNewTab(); // start with one blank canvas, same as Sprint 1/2 did
 
+        FlowPane toolPalette = buildToolPalette();
+        toolPalette.setPadding(new Insets(5, 5, 2, 5));
+        FlowPane actionBar = buildActionBar();
+        actionBar.setPadding(new Insets(2, 5, 2, 5));
+
         HBox toolRow1 = new HBox(10, new Label("Tool:"), toolSelector, colorPicker, colorInfoLabel);
-        toolRow1.setPadding(new Insets(5, 5, 2, 5));
+        toolRow1.setPadding(new Insets(2, 5, 2, 5));
 
-        Button clearButton = new Button("Clear Canvas");
-        clearButton.setOnAction(event -> clearCanvas());
-
-        HBox toolRow2 = new HBox(10, widthLabel, widthSlider, dashedCheckBox, clearButton);
+        HBox toolRow2 = new HBox(10, widthLabel, widthSlider, dashedCheckBox);
         toolRow2.setPadding(new Insets(2, 5, 2, 5));
 
         textField.setPromptText("Text for the Text tool");
@@ -155,8 +182,9 @@ public class PaintApp extends Application implements ToolSettings {
 
         setUpAutosave();
         autosaveSecondsSpinner.setPrefWidth(85);
+        notifyCheckBox.setSelected(true);
         HBox toolRow4 = new HBox(10, autosaveCheckBox, autosaveSecondsSpinner, new Label("seconds"),
-                showCountdownCheckBox, countdownLabel, autosaveStatusLabel);
+                showCountdownCheckBox, notifyCheckBox, countdownLabel, autosaveStatusLabel);
         toolRow4.setPadding(new Insets(2, 5, 2, 5));
 
         setUpWebServer();
@@ -164,13 +192,17 @@ public class PaintApp extends Application implements ToolSettings {
         HBox toolRow5 = new HBox(10, webServerCheckBox, webPortSpinner, shareTabCheckBox, webLinkLabel);
         toolRow5.setPadding(new Insets(2, 5, 5, 5));
 
-        VBox top = new VBox(makeMenuBar(), toolRow1, toolRow2, toolRow3, toolRow4, toolRow5);
+        addTooltips();
+        setUpActivityLogging();
+
+        VBox top = new VBox(makeMenuBar(), toolPalette, actionBar,
+                toolRow1, toolRow2, toolRow3, toolRow4, toolRow5);
 
         BorderPane layout = new BorderPane();
         layout.setTop(top);
         layout.setCenter(tabPane);
 
-        Scene scene = new Scene(layout, 1000, 700);
+        Scene scene = new Scene(layout, 1000, 800);
         stage.setScene(scene);
         stage.setTitle("Paint");
 
@@ -189,6 +221,11 @@ public class PaintApp extends Application implements ToolSettings {
     public void stop() {
         autosaveClock.stop();
         webServer.stop();
+        notifier.dispose();
+        log("new tab", "Program closed");
+        if (logger != null) {
+            logger.close(); // writes out any lines still waiting
+        }
     }
 
     // ------------------------------------------------------------------
@@ -287,80 +324,298 @@ public class PaintApp extends Application implements ToolSettings {
     // Menu bar and keyboard shortcuts
     // ------------------------------------------------------------------
 
-    /** Builds the File, Edit and Help menus, with keyboard shortcuts on their items. */
+    /** Builds the File, Edit, Image and Help menus, with keyboard shortcuts on their items. */
     private MenuBar makeMenuBar() {
-        MenuItem newTabItem = new MenuItem("New Tab");
-        newTabItem.setAccelerator(new KeyCodeCombination(KeyCode.N, KeyCombination.CONTROL_DOWN));
-        newTabItem.setOnAction(event -> addNewTab());
-
-        MenuItem openItem = new MenuItem("Open");
-        openItem.setAccelerator(new KeyCodeCombination(KeyCode.O, KeyCombination.CONTROL_DOWN));
-        openItem.setOnAction(event -> openImage());
-
-        MenuItem saveItem = new MenuItem("Save");
-        saveItem.setAccelerator(new KeyCodeCombination(KeyCode.S, KeyCombination.CONTROL_DOWN));
-        saveItem.setOnAction(event -> save());
-
-        MenuItem saveAsItem = new MenuItem("Save As");
-        saveAsItem.setAccelerator(new KeyCodeCombination(
-                KeyCode.S, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN));
-        saveAsItem.setOnAction(event -> saveAs());
-
-        MenuItem closeItem = new MenuItem("Close Image");
-        closeItem.setAccelerator(new KeyCodeCombination(KeyCode.W, KeyCombination.CONTROL_DOWN));
-        closeItem.setOnAction(event -> closeCurrentImage());
-
-        MenuItem exitItem = new MenuItem("Exit");
-        exitItem.setOnAction(event -> {
-            if (!anyUnsavedChanges() || confirmDiscard("exiting")) {
-                window.close();
-            }
-        });
-
         Menu fileMenu = new Menu("File");
-        fileMenu.getItems().addAll(newTabItem, openItem, saveItem, saveAsItem, closeItem, exitItem);
-
-        MenuItem undoItem = new MenuItem("Undo");
-        undoItem.setAccelerator(new KeyCodeCombination(KeyCode.Z, KeyCombination.CONTROL_DOWN));
-        undoItem.setOnAction(event -> activeTab().undo());
-
-        MenuItem redoItem = new MenuItem("Redo");
-        redoItem.setAccelerator(new KeyCodeCombination(KeyCode.Y, KeyCombination.CONTROL_DOWN));
-        redoItem.setOnAction(event -> activeTab().redo());
-
-        MenuItem cutItem = new MenuItem("Cut");
-        cutItem.setAccelerator(new KeyCodeCombination(KeyCode.X, KeyCombination.CONTROL_DOWN));
-        cutItem.setOnAction(event -> activeTab().cutSelection());
-
-        MenuItem copyItem = new MenuItem("Copy");
-        copyItem.setAccelerator(new KeyCodeCombination(KeyCode.C, KeyCombination.CONTROL_DOWN));
-        copyItem.setOnAction(event -> activeTab().copySelection());
-
-        MenuItem pasteItem = new MenuItem("Paste");
-        pasteItem.setAccelerator(new KeyCodeCombination(KeyCode.V, KeyCombination.CONTROL_DOWN));
-        pasteItem.setOnAction(event -> activeTab().pasteFromClipboard());
-
-        MenuItem clearItem = new MenuItem("Clear Canvas");
-        clearItem.setAccelerator(new KeyCodeCombination(
-                KeyCode.C, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN));
-        clearItem.setOnAction(event -> clearCanvas());
+        fileMenu.getItems().addAll(
+                menuItem("File", "New Tab", ctrl(KeyCode.N), this::addNewTab),
+                menuItem("File", "Open", ctrl(KeyCode.O), this::openImage),
+                menuItem("File", "Save", ctrl(KeyCode.S), this::save),
+                menuItem("File", "Save As", ctrlShift(KeyCode.S), this::saveAs),
+                menuItem("File", "Close Image", ctrl(KeyCode.W), this::closeCurrentImage),
+                menuItem("File", "Exit", null, () -> {
+                    if (!anyUnsavedChanges() || confirmDiscard("exiting")) {
+                        window.close();
+                    }
+                }));
 
         Menu editMenu = new Menu("Edit");
-        editMenu.getItems().addAll(undoItem, redoItem, new SeparatorMenuItem(),
-                cutItem, copyItem, pasteItem, new SeparatorMenuItem(), clearItem);
+        editMenu.getItems().addAll(
+                menuItem("Edit", "Undo", ctrl(KeyCode.Z), () -> activeTab().undo()),
+                menuItem("Edit", "Redo", ctrl(KeyCode.Y), () -> activeTab().redo()),
+                new SeparatorMenuItem(),
+                menuItem("Edit", "Cut", ctrl(KeyCode.X), () -> activeTab().cutSelection()),
+                menuItem("Edit", "Copy", ctrl(KeyCode.C), () -> activeTab().copySelection()),
+                menuItem("Edit", "Paste", ctrl(KeyCode.V), () -> activeTab().pasteFromClipboard()),
+                menuItem("Edit", "Select All", ctrl(KeyCode.A), () -> activeTab().selectAll()),
+                new SeparatorMenuItem(),
+                menuItem("Edit", "Clear Canvas", ctrlShift(KeyCode.C), this::clearCanvas));
 
-        MenuItem helpItem = new MenuItem("Help");
-        helpItem.setOnAction(event -> showHelp());
+        // Rotate and flip, once for the whole canvas (with shortcuts) and once for the selection.
+        Menu canvasMenu = new Menu("Whole Canvas");
+        canvasMenu.getItems().addAll(
+                menuItem("Image > Whole Canvas", "Rotate 90°", ctrl(KeyCode.R),
+                        () -> applyToCanvas(ImageTransforms.Op.ROTATE_90)),
+                menuItem("Image > Whole Canvas", "Rotate 180°", ctrlShift(KeyCode.R),
+                        () -> applyToCanvas(ImageTransforms.Op.ROTATE_180)),
+                menuItem("Image > Whole Canvas", "Rotate 270°", ctrl(KeyCode.L),
+                        () -> applyToCanvas(ImageTransforms.Op.ROTATE_270)),
+                menuItem("Image > Whole Canvas", "Flip Horizontal", ctrl(KeyCode.H),
+                        () -> applyToCanvas(ImageTransforms.Op.FLIP_HORIZONTAL)),
+                menuItem("Image > Whole Canvas", "Flip Vertical", ctrlShift(KeyCode.H),
+                        () -> applyToCanvas(ImageTransforms.Op.FLIP_VERTICAL)));
 
-        MenuItem aboutItem = new MenuItem("About");
-        aboutItem.setOnAction(event -> showAbout());
+        Menu selectionMenu = new Menu("Selection");
+        selectionMenu.getItems().addAll(
+                menuItem("Image > Selection", "Rotate 90°", null,
+                        () -> applyToSelection(ImageTransforms.Op.ROTATE_90)),
+                menuItem("Image > Selection", "Rotate 180°", null,
+                        () -> applyToSelection(ImageTransforms.Op.ROTATE_180)),
+                menuItem("Image > Selection", "Rotate 270°", null,
+                        () -> applyToSelection(ImageTransforms.Op.ROTATE_270)),
+                menuItem("Image > Selection", "Flip Horizontal", null,
+                        () -> applyToSelection(ImageTransforms.Op.FLIP_HORIZONTAL)),
+                menuItem("Image > Selection", "Flip Vertical", null,
+                        () -> applyToSelection(ImageTransforms.Op.FLIP_VERTICAL)));
+
+        Menu imageMenu = new Menu("Image");
+        imageMenu.getItems().addAll(canvasMenu, selectionMenu);
 
         Menu helpMenu = new Menu("Help");
-        helpMenu.getItems().addAll(helpItem, aboutItem);
+        helpMenu.getItems().addAll(
+                menuItem("Help", "Help", null, this::showHelp),
+                menuItem("Help", "Show Log File Location", null, this::showLogLocation),
+                menuItem("Help", "About", null, this::showAbout));
 
         MenuBar menuBar = new MenuBar();
-        menuBar.getMenus().addAll(fileMenu, editMenu, helpMenu);
+        menuBar.getMenus().addAll(fileMenu, editMenu, imageMenu, helpMenu);
         return menuBar;
+    }
+
+    /**
+     * Makes one menu item. Choosing it (by mouse or by its shortcut) writes a
+     * line to the activity log, then runs the action.
+     *
+     * @param menu   the menu it lives in, for the log
+     * @param text   the item's label
+     * @param keys   its keyboard shortcut, or null for none
+     * @param action what it does
+     */
+    private MenuItem menuItem(String menu, String text, KeyCombination keys, Runnable action) {
+        MenuItem item = new MenuItem(text);
+        if (keys != null) {
+            item.setAccelerator(keys);
+        }
+        item.setOnAction(event -> {
+            logUi("Menu " + menu + " > " + text);
+            action.run();
+        });
+        return item;
+    }
+
+    private static KeyCombination ctrl(KeyCode key) {
+        return new KeyCodeCombination(key, KeyCombination.CONTROL_DOWN);
+    }
+
+    private static KeyCombination ctrlShift(KeyCode key) {
+        return new KeyCodeCombination(key, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN);
+    }
+
+    // ------------------------------------------------------------------
+    // Toolbar buttons with icons, and tooltips
+    // ------------------------------------------------------------------
+
+    /** One icon button per drawing tool. They and the Tool drop-down always show the same tool. */
+    private FlowPane buildToolPalette() {
+        FlowPane palette = new FlowPane(4, 4);
+        for (DrawTool tool : DrawTool.values()) {
+            ToggleButton button = new ToggleButton();
+            button.setGraphic(ToolIcons.forTool(tool));
+            button.setToggleGroup(toolGroup);
+            button.setMinSize(38, 38);
+            button.setPrefSize(38, 38);
+            button.setOnAction(event -> {
+                toolSelector.setValue(tool);
+                button.setSelected(true); // a tool button cannot be switched off by clicking it again
+            });
+            setTip(button, tool.toString());
+            toolButtons.put(tool, button);
+            palette.getChildren().add(button);
+        }
+        toolSelector.valueProperty().addListener((obs, oldTool, newTool) -> {
+            if (newTool != null) {
+                toolButtons.get(newTool).setSelected(true);
+            }
+        });
+        toolButtons.get(toolSelector.getValue()).setSelected(true);
+        return palette;
+    }
+
+    /** A row of buttons for the common actions, each with an icon and a short label. */
+    private FlowPane buildActionBar() {
+        FlowPane bar = new FlowPane(4, 4);
+        bar.getChildren().addAll(
+                actionButton("New", ToolIcons.newTab(), "New tab (Ctrl+N)", this::addNewTab),
+                actionButton("Open", ToolIcons.open(), "Open an image in a new tab (Ctrl+O)", this::openImage),
+                actionButton("Save", ToolIcons.save(), "Save (Ctrl+S)", this::save),
+                new Separator(Orientation.VERTICAL),
+                actionButton("Undo", ToolIcons.undo(), "Undo the last change (Ctrl+Z)", () -> activeTab().undo()),
+                actionButton("Redo", ToolIcons.redo(), "Redo the change you undid (Ctrl+Y)", () -> activeTab().redo()),
+                new Separator(Orientation.VERTICAL),
+                actionButton("90°", ToolIcons.rotate(),
+                        "Rotate 90° clockwise: the selection if there is one, otherwise the whole canvas (whole canvas: Ctrl+R)",
+                        () -> applySmart(ImageTransforms.Op.ROTATE_90)),
+                actionButton("180°", ToolIcons.rotate(),
+                        "Rotate 180°: the selection if there is one, otherwise the whole canvas (whole canvas: Ctrl+Shift+R)",
+                        () -> applySmart(ImageTransforms.Op.ROTATE_180)),
+                actionButton("270°", ToolIcons.rotate(),
+                        "Rotate 270° clockwise: the selection if there is one, otherwise the whole canvas (whole canvas: Ctrl+L)",
+                        () -> applySmart(ImageTransforms.Op.ROTATE_270)),
+                actionButton("Flip H", ToolIcons.flipHorizontal(),
+                        "Mirror left to right: the selection if there is one, otherwise the whole canvas (whole canvas: Ctrl+H)",
+                        () -> applySmart(ImageTransforms.Op.FLIP_HORIZONTAL)),
+                actionButton("Flip V", ToolIcons.flipVertical(),
+                        "Mirror top to bottom: the selection if there is one, otherwise the whole canvas (whole canvas: Ctrl+Shift+H)",
+                        () -> applySmart(ImageTransforms.Op.FLIP_VERTICAL)),
+                new Separator(Orientation.VERTICAL),
+                actionButton("Clear", ToolIcons.clear(), "Clear the canvas (asks first, Ctrl+Shift+C)", this::clearCanvas));
+        return bar;
+    }
+
+    /** Makes one action button; clicking it writes a log line and then runs the action. */
+    private Button actionButton(String text, Node icon, String tooltip, Runnable action) {
+        Button button = new Button(text, icon);
+        button.setOnAction(event -> {
+            logUi("Button " + text);
+            action.run();
+        });
+        setTip(button, tooltip);
+        return button;
+    }
+
+    /** Shows a tooltip when the mouse rests on the control. */
+    private static void setTip(Node node, String text) {
+        Tooltip tip = new Tooltip(text);
+        tip.setShowDelay(Duration.millis(300));
+        tip.setWrapText(true);
+        tip.setMaxWidth(320);
+        Tooltip.install(node, tip);
+    }
+
+    /** Tooltips for everything in the toolbar that is not built by one of the helpers above. */
+    private void addTooltips() {
+        setTip(toolSelector, "Choose the drawing tool (the icon buttons above do the same)");
+        setTip(colorPicker, "Drawing color. The Color Grabber tool, or a right-click on the picture, picks one from the picture.");
+        setTip(widthSlider, "Line width in pixels, for the pencil, eraser, and shape outlines");
+        setTip(dashedCheckBox, "Draw dashed lines and outlines");
+        setTip(sidesSpinner, "Number of sides for the Regular Polygon tool (3 to 100)");
+        setTip(starPointsSpinner, "Number of points for the Star tool (4 or more; 4 makes a diamond)");
+        setTip(textField, "The words the Text tool will place. Pick the Text tool, then press and drag on the picture.");
+        setTip(fontSizeSpinner, "Size of the text, in pixels");
+        setTip(autosaveCheckBox, "Save every tab with unsaved changes on a timer");
+        setTip(autosaveSecondsSpinner, "Seconds between autosaves (5 or more)");
+        setTip(showCountdownCheckBox, "Show how long until the next autosave");
+        setTip(notifyCheckBox, "Pop up a notification from the operating system when autosave runs or is switched on or off");
+        setTip(webServerCheckBox, "Start or stop the web server that shows the tabs you share");
+        setTip(webPortSpinner, "Port number for the web server (stop the server to change it)");
+        setTip(shareTabCheckBox, "Show this tab's picture on the web server's page");
+    }
+
+    // ------------------------------------------------------------------
+    // Rotating and flipping
+    // ------------------------------------------------------------------
+
+    /** Turns or mirrors the whole canvas of the active tab. */
+    private void applyToCanvas(ImageTransforms.Op op) {
+        activeTab().transformCanvas(op);
+    }
+
+    /** Turns or mirrors the selected piece of the active tab, or explains how to select one. */
+    private void applyToSelection(ImageTransforms.Op op) {
+        if (!activeTab().hasSelection()) {
+            showMessage("Nothing is selected. Pick the Select tool and drag a box around part of the picture first.");
+            return;
+        }
+        activeTab().transformSelection(op);
+    }
+
+    /** What the toolbar buttons do: the selection if there is one, otherwise the whole canvas. */
+    private void applySmart(ImageTransforms.Op op) {
+        if (activeTab().hasSelection()) {
+            activeTab().transformSelection(op);
+        } else {
+            activeTab().transformCanvas(op);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Activity log
+    // ------------------------------------------------------------------
+
+    @Override
+    public void log(String fileName, String message) {
+        if (logger != null) {
+            logger.log(fileName, message);
+        }
+    }
+
+    /** Logs something the user did in the toolbar or menus, under the active tab's file name. */
+    private void logUi(String message) {
+        Tab selected = tabPane.getSelectionModel().getSelectedItem();
+        String name = (selected == null) ? "new tab" : ((ImageCanvasTab) selected.getUserData()).getLogName();
+        log(name, message);
+    }
+
+    /** Writes a log line whenever the user changes one of the toolbar settings. */
+    private void setUpActivityLogging() {
+        toolSelector.valueProperty().addListener((obs, oldTool, newTool) -> logUi(newTool + " tool selected"));
+        colorPicker.valueProperty().addListener((obs, oldColor, newColor) ->
+                logUi("Color changed to " + ColorNames.describe(newColor)));
+        widthSlider.valueChangingProperty().addListener((obs, was, isChanging) -> {
+            if (!isChanging) {
+                logUi("Line width set to " + (int) widthSlider.getValue());
+            }
+        });
+        widthSlider.valueProperty().addListener((obs, oldValue, newValue) -> {
+            if (!widthSlider.isValueChanging()) {
+                logUi("Line width set to " + newValue.intValue());
+            }
+        });
+        dashedCheckBox.selectedProperty().addListener((obs, was, isOn) -> logUi("Dashed " + (isOn ? "on" : "off")));
+        sidesSpinner.valueProperty().addListener((obs, oldValue, newValue) -> logUi("Polygon sides set to " + newValue));
+        starPointsSpinner.valueProperty().addListener((obs, oldValue, newValue) -> logUi("Star points set to " + newValue));
+        fontSizeSpinner.valueProperty().addListener((obs, oldValue, newValue) -> logUi("Text size set to " + newValue));
+        showCountdownCheckBox.selectedProperty().addListener((obs, was, isOn) ->
+                logUi("Autosave countdown " + (isOn ? "shown" : "hidden")));
+        notifyCheckBox.selectedProperty().addListener((obs, was, isOn) ->
+                logUi("Notifications " + (isOn ? "on" : "off")));
+        autosaveSecondsSpinner.valueProperty().addListener((obs, oldValue, newValue) ->
+                logUi("Autosave interval set to " + newValue + " seconds"));
+        tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
+            if (newTab != null) {
+                ImageCanvasTab imageTab = (ImageCanvasTab) newTab.getUserData();
+                log(imageTab.getLogName(), "Switched to tab " + (tabPane.getTabs().indexOf(newTab) + 1));
+            }
+        });
+    }
+
+    /** Tells the user where the activity log is. */
+    private void showLogLocation() {
+        showMessage(logger == null
+                ? "The activity log could not be opened."
+                : "Your activity is logged to:\n" + logger.getFile().toAbsolutePath());
+    }
+
+    /**
+     * Pops up an operating-system notification, if the user has them on.
+     *
+     * @param title   the notification's heading
+     * @param message the notification's text
+     */
+    private void notifyUser(String title, String message) {
+        if (notifyCheckBox.isSelected()) {
+            notifier.show(title, message);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -384,6 +639,10 @@ public class PaintApp extends Application implements ToolSettings {
         wireTabCloseRequest(imageTab);
         tabPane.getTabs().add(imageTab.getTab());
         tabPane.getSelectionModel().select(imageTab.getTab());
+        int number = tabPane.getTabs().size();
+        log(imageTab.getLogName(), imageTab.getCurrentFile() == null
+                ? "New tab opened as tab " + number
+                : "Opened " + imageTab.getCurrentFile().getName() + " in tab " + number);
     }
 
     /**
@@ -502,8 +761,14 @@ public class PaintApp extends Application implements ToolSettings {
 
         String warning = ImageFormats.warningFor(current.getOriginalFormat(),
                 ImageFormats.extensionOf(file), current.hasTransparency());
-        if (warning != null && !confirmFormatLoss(warning)) {
-            return;
+        if (warning != null) {
+            boolean goAhead = confirmFormatLoss(warning);
+            logUi("Format change warning (" + current.getOriginalFormat().toUpperCase() + " to "
+                    + ImageFormats.normalize(ImageFormats.extensionOf(file)).toUpperCase() + ") "
+                    + (goAhead ? "accepted" : "cancelled"));
+            if (!goAhead) {
+                return;
+            }
         }
         writeAndReport(current, file);
     }
@@ -534,7 +799,10 @@ public class PaintApp extends Application implements ToolSettings {
             tab.writeToFile(file);
             autosaveTimer.reset();
             updateCountdownLabel();
+            log(tab.getLogName(), "Saved as " + file.getName() + " ("
+                    + ImageFormats.normalize(ImageFormats.extensionOf(file)).toUpperCase() + ")");
         } catch (IOException e) {
+            log(tab.getLogName(), "Save failed: " + e.getMessage());
             showMessage("The image could not be saved: " + e.getMessage());
         }
     }
@@ -567,8 +835,10 @@ public class PaintApp extends Application implements ToolSettings {
     /** The shared logic behind both File > Close Image and a tab's own close button. */
     private void closeImageTab(ImageCanvasTab imageTab) {
         if (imageTab.isUnsaved() && !confirmDiscard("closing this image")) {
+            log(imageTab.getLogName(), "Close cancelled (unsaved changes kept)");
             return;
         }
+        log(imageTab.getLogName(), "Closed tab " + (tabPane.getTabs().indexOf(imageTab.getTab()) + 1));
         if (tabPane.getTabs().size() <= 1) {
             imageTab.resetToBlank();
         } else {
@@ -586,8 +856,12 @@ public class PaintApp extends Application implements ToolSettings {
             if (isOn) {
                 autosaveTimer.setIntervalSeconds(autosaveSecondsSpinner.getValue());
                 autosaveTimer.start();
+                logUi("Autosave turned on (every " + autosaveSecondsSpinner.getValue() + " seconds)");
+                notifyUser("Autosave on", "Saving your pictures every " + autosaveSecondsSpinner.getValue() + " seconds.");
             } else {
                 autosaveTimer.stop();
+                logUi("Autosave turned off");
+                notifyUser("Autosave off", "Your pictures will no longer be saved automatically.");
             }
             updateCountdownLabel();
         });
@@ -652,6 +926,9 @@ public class PaintApp extends Application implements ToolSettings {
         autosaveStatusLabel.setText(failure != null
                 ? "Autosave failed at " + time + ": " + failure
                 : "Last autosave: " + time + " (" + saved + " saved)");
+        logUi(failure != null ? "Autosave failed: " + failure : "Autosave saved " + saved + " tab(s)");
+        notifyUser(failure != null ? "Autosave failed" : "Autosave",
+                failure != null ? failure : (saved == 0 ? "Nothing needed saving." : "Saved " + saved + " picture(s)."));
     }
 
     // ------------------------------------------------------------------
@@ -666,6 +943,7 @@ public class PaintApp extends Application implements ToolSettings {
                     webServer.start(webPortSpinner.getValue());
                     webPortSpinner.setDisable(true);
                     webLinkLabel.setText("Open http://localhost:" + webServer.getPort() + "/");
+                    logUi("Web server started on port " + webServer.getPort());
                 } catch (IOException e) {
                     webServerCheckBox.setSelected(false);
                     showMessage("The web server could not start on port " + webPortSpinner.getValue()
@@ -675,10 +953,14 @@ public class PaintApp extends Application implements ToolSettings {
                 webServer.stop();
                 webPortSpinner.setDisable(false);
                 webLinkLabel.setText("");
+                logUi("Web server stopped");
             }
         });
 
-        shareTabCheckBox.setOnAction(event -> activeTab().setShared(shareTabCheckBox.isSelected()));
+        shareTabCheckBox.setOnAction(event -> {
+            activeTab().setShared(shareTabCheckBox.isSelected());
+            logUi(shareTabCheckBox.isSelected() ? "Tab shared on the web server" : "Tab no longer shared");
+        });
         // Each tab remembers whether it is shared, so the box follows the selected tab.
         tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) ->
                 shareTabCheckBox.setSelected(newTab != null && ((ImageCanvasTab) newTab.getUserData()).isShared()));
@@ -758,6 +1040,13 @@ public class PaintApp extends Application implements ToolSettings {
                 + "Cut and Paste work on the selection; a pasted piece can be dragged into place\n"
                 + "right away. Click outside the piece to put it down.\n"
                 + "Edit > Undo / Redo step through your edits (up to 40 per tab).\n"
+                + "Image > Whole Canvas turns the picture (90, 180, 270 degrees clockwise) or mirrors it\n"
+                + "(Flip Horizontal swaps left and right, Flip Vertical swaps top and bottom).\n"
+                + "Image > Selection does the same to just the selected piece. The rotate and flip\n"
+                + "buttons use the selection if there is one, otherwise the whole canvas.\n"
+                + "Every tool and button has a tooltip: rest the mouse on it.\n"
+                + "Autosave and the log: autosave can show an operating-system notification, and\n"
+                + "what you do is written to a log file (Help > Show Log File Location).\n"
                 + "Clear Canvas (button or Edit menu) asks first, and can be undone.\n"
                 + "Autosave: tick \"Autosave every\", set the seconds, and tick \"Show countdown\" to\n"
                 + "see the timer. Saving by hand restarts the countdown.\n"
@@ -771,7 +1060,8 @@ public class PaintApp extends Application implements ToolSettings {
                 + "same at any time, even mid-drag on a shape you're drawing.\n"
                 + "Shortcuts: Ctrl+N New Tab, Ctrl+O Open, Ctrl+S Save, Ctrl+Shift+S Save As,\n"
                 + "Ctrl+W Close Image, Ctrl+Z Undo, Ctrl+Y Redo, Ctrl+X/C/V Cut/Copy/Paste,\n"
-                + "Ctrl+Shift+C Clear Canvas.");
+                + "Ctrl+A Select All, Ctrl+Shift+C Clear Canvas, Ctrl+R / Ctrl+Shift+R / Ctrl+L rotate\n"
+                + "90 / 180 / 270, Ctrl+H / Ctrl+Shift+H flip horizontal / vertical.");
         alert.showAndWait();
     }
 

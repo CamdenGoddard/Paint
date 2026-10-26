@@ -1,14 +1,67 @@
-Camden's Pain(t)  Version 0.5.0  -  10/14/2026
+Camden's Pain(t)  Version 0.6.0  -  10/26/2026
 =============================================
 
-Sprint 5 submission for CS 250.
+Sprint 6 submission for CS 250.
 
 Source code:
   GitHub repo:  https://github.com/CamdenGoddard/Paint
-  Tag / release:  v0.5.0  (https://github.com/CamdenGoddard/Paint/releases/tag/v0.5.0)
-  This tag matches the code uploaded in the sprint 5 zip.
+  Tag / release:  v0.6.0  (https://github.com/CamdenGoddard/Paint/releases/tag/v0.6.0)
+  This tag matches the code uploaded in the sprint 6 zip.
 
 New features:
+  * Rotate and mirror. Image > Whole Canvas turns the picture 90, 180 or 270
+    degrees clockwise, or mirrors it (Flip Horizontal swaps left and right,
+    Flip Vertical swaps top and bottom). Image > Selection does the same to
+    just the selected piece, turning it around its own center; the piece
+    stays floating so it can be dragged into place. Each is one undo step, and
+    undoing a 90/270 rotation also puts the canvas size back.
+  * Icon buttons. Every drawing tool has an icon button (the Tool drop-down
+    is still there and stays in step with them), and New, Open, Save, Undo,
+    Redo, the five rotate/flip actions and Clear have icon-and-label buttons.
+    The rotate/flip buttons act on the selection if there is one, otherwise on
+    the whole canvas. Icons are drawn from vector paths, so no image files
+    are needed.
+  * Tooltips on every button and toolbar control (rest the mouse on it).
+  * Keyboard shortcuts for the menu actions: Ctrl+N/O/S, Ctrl+Shift+S,
+    Ctrl+W, Ctrl+Z/Y, Ctrl+X/C/V, Ctrl+A (select all), Ctrl+Shift+C (clear),
+    and for the whole canvas Ctrl+R (rotate 90), Ctrl+Shift+R (180), Ctrl+L
+    (270), Ctrl+H (flip horizontal), Ctrl+Shift+H (flip vertical).
+  * Notifications from the operating system (the corner of the screen on
+    Windows) when autosave runs and when it is switched on or off. The
+    "Notifications" box turns them on and off. If the computer has no system
+    tray the program carries on without them; the autosave status text still
+    shows what happened.
+  * Threaded logging. What you do is written, one event per line, to
+    PaintLog/paint-log.txt in your home folder (Help > Show Log File Location
+    shows the exact path). Lines look like:
+        10/26/2026 [cat.png] 11:33:03 Line tool selected
+        10/26/2026 [new tab] 11:33:06 Rectangle drawn from (10,10) to (90,60), color #FF0000, width 6
+    It logs tools, colors, widths and other settings, every shape, stroke and
+    piece of text with its coordinates, selections, cut/copy/paste, undo/redo,
+    rotate/flip, menu and button clicks, tab changes, open/save/save as,
+    format-change warnings, autosave, and the web server. A separate
+    background thread (ActionLogger) does the writing: the program only drops
+    each line in a queue, so drawing never waits for the disk, and the lines
+    are written out in order when the program closes.
+
+Design notes / assumptions:
+  * Rotating and mirroring is done on the pixels themselves (ImageTransforms)
+    rather than with a display transform, so what you save is what you see.
+  * The activity log is a plain append-only text file and is never cleared by
+    the program.
+  * 38 unit tests now (src/test/java): the new ImageTransformsTest and
+    ActionLoggerTest join the geometry, autosave, format and web server tests.
+
+Known issues:
+  * The icons for the 90, 180 and 270 degree buttons are the same; the text
+    beside each one tells them apart.
+  * The log grows without limit; delete the file if it gets big.
+  * Operating-system notifications need a system tray; they have only been
+    tried on Windows.
+  * Rotating a selection by 90 or 270 degrees can push a piece partly off the
+    edge of the canvas, which crops it when it is put down.
+
+Sprint 5 features (still in the program):
   * Unit tests: 23 JUnit tests in src/test/java (run them with "mvn test",
     or right-click the test folder in IntelliJ and choose Run Tests). They
     cover the star/polygon geometry (GeometryTest), the autosave countdown
@@ -38,20 +91,7 @@ New features:
     says so specifically when the picture has see-through areas, and lets you
     cancel. How this is proven is in TEST_PLAN.md.
 
-Design notes / assumptions:
-  * The new logic is in small classes of its own: Geometry (corner math),
-    AutosaveTimer (the countdown), ImageWebServer (the server) and
-    ImageFormats (saving and the warning text), so each can be unit tested
-    without opening a window.
-  * Save As now adds the selected filter's extension when the typed name has
-    none (or one that isn't PNG/JPG/BMP), so the file name matches what is in it.
-  * Pictures are now saved with a transparent background, so see-through
-    areas of an opened PNG stay see-through when saved as PNG. Before this
-    they were flattened onto white.
-  * The web server asks the JavaFX thread for each picture, so you always
-    see what is on screen, including edits not yet saved.
-
-Known issues:
+Known issues from earlier sprints:
   * The web server is local only and has no password; stop it when you are
     done with it.
   * Autosave to a JPEG file re-compresses it each time, which slowly
@@ -79,4 +119,4 @@ Critique from Sprint 4 (still applies):
   need to add more files to the program.
 
 Expected next sprint:
-  * Whatever Week 6 adds.
+  * Whatever Week 7 adds.

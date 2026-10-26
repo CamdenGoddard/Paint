@@ -56,3 +56,39 @@ Run with `mvn test` (or Run Tests in IntelliJ). All should pass.
 | Autosave | tick Autosave, set 5 seconds, draw on a tab that has a file, wait: the tab's `*` disappears and "Last autosave" updates |
 | Countdown | tick Show countdown; it counts down; untick and it disappears; Save restarts it |
 | Web server | tick Web server, open the link: message says nothing is shared; tick Share this tab; reload: the picture appears; untick it: the message returns |
+
+## 4. Sprint 6 features
+
+**Rotate and mirror**
+
+| step | expected |
+|------|----------|
+| Draw a red line near the top-left. Press Ctrl+R | the canvas becomes taller than wide and the line is now a vertical line near the right edge |
+| Press Ctrl+Z | the picture and its original size come back |
+| Ctrl+Shift+R, Ctrl+L, Ctrl+H, Ctrl+Shift+H (undoing between) | 180 degrees (line bottom-right), 270 degrees (line down the left side), mirrored left-right, mirrored top-bottom |
+| Pick Select, drag a box around part of the picture, press the 90 button | only that piece turns; the rest of the picture does not change; Ctrl+Z puts it back |
+| Image > Selection > Rotate 90 with nothing selected | a message says to select something first |
+
+`ImageTransformsTest` checks each of the five operations on a 3x2 picture whose
+pixels are all different colors, that four quarter turns give back the original,
+and that opposite turns cancel.
+
+**Logging**
+
+1. Run the program, draw a shape, choose a tool, save, then close it.
+2. Open `PaintLog/paint-log.txt` in your home folder (Help > Show Log File Location).
+3. Expected: one line per action in the form `date [file name] time message`,
+   in the order you did things, ending with `Program closed`.
+
+`ActionLoggerTest` checks the line format, appending across runs, that writing
+happens on the separate `paint-logger` thread, that six threads logging at once
+lose no lines and keep each thread's order, and that closing writes everything
+still waiting.
+
+**Icons, tooltips, notifications**
+
+| feature | how to check |
+|---------|--------------|
+| Icons | every tool has an icon button; clicking one changes the Tool drop-down, and the reverse |
+| Tooltips | rest the mouse on any button, box or spinner: a tip appears after a moment |
+| Notifications | tick Autosave: an operating-system notification appears (Windows: bottom-right corner); untick Notifications and nothing appears |
