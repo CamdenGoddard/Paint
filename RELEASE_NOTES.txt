@@ -53,6 +53,8 @@ Design notes / assumptions:
     ActionLoggerTest join the geometry, autosave, format and web server tests.
 
 Known issues:
+  * After many rotates or flips the picture sometimes starts to fade (the
+    lines get lighter). It has not been tracked down yet.
   * The icons for the 90, 180 and 270 degree buttons are the same; the text
     beside each one tells them apart.
   * The log grows without limit; delete the file if it gets big.
