@@ -1,0 +1,10 @@
+@startuml sequence-logging
+title Sequence: threaded logging
+skinparam shadowing false
+participant "Program" as UI
+participant "Logger thread" as W
+database "Log file" as F
+UI -> W : add line to queue
+UI -> UI : keep drawing
+W -> F : write line
+@enduml

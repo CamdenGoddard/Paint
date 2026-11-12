@@ -59,7 +59,9 @@ import javafx.scene.text.Font;
  */
 public final class ImageCanvasTab {
 
+    /** Width of a new blank canvas, in pixels. */
     private static final double DEFAULT_WIDTH = 800;
+    /** Height of a new blank canvas, in pixels. */
     private static final double DEFAULT_HEIGHT = 600;
 
     /**
@@ -71,15 +73,22 @@ public final class ImageCanvasTab {
 
     /** Where the last copied piece came from, so a paste can land just offset from it. */
     private static int copiedX;
+    /** Where the last copied piece came from (y), for pasting just offset from it. */
     private static int copiedY;
 
+    /** The drawing surface. */
     private final Canvas canvas;
+    /** Pen for the drawing surface. */
     private final GraphicsContext gc;
     /** Transparent layer over the canvas that holds only the selection outline. */
     private final Canvas overlay;
+    /** Pen for the selection overlay. */
     private final GraphicsContext overlayGc;
+    /** The tab this canvas lives in. */
     private final Tab tab;
+    /** Where the current tool, color and width come from. */
     private final ToolSettings settings;
+    /** Undo and redo steps for this tab. */
     private final UndoHistory history = new UndoHistory();
 
     /** The file this canvas was last opened from or saved to. Null = never saved. */
@@ -103,6 +112,7 @@ public final class ImageCanvasTab {
 
     /** Where the current drag started, in canvas coordinates. Only meaningful mid-drag. */
     private double dragStartX;
+    /** Where the current drag started (y). */
     private double dragStartY;
 
     /**
@@ -120,17 +130,35 @@ public final class ImageCanvasTab {
 
     // ---- selection state -------------------------------------------------
 
-    private enum SelectDrag { NONE, SELECTING, MOVING }
+    /** What the mouse is doing with the Select tool right now. */
+    private enum SelectDrag {
+        /** No Select drag is in progress. */
+        NONE,
+        /** A new selection rectangle is being stretched. */
+        SELECTING,
+        /** The selected piece is being carried. */
+        MOVING
+    }
 
+    /** The Select drag in progress, if any. */
     private SelectDrag selectDrag = SelectDrag.NONE;
+    /** True while a selection rectangle exists. */
     private boolean hasSelection;
+    /** Left edge of the selection. */
     private int selX;
+    /** Top edge of the selection. */
     private int selY;
+    /** Width of the selection. */
     private int selW;
+    /** Height of the selection. */
     private int selH;
+    /** Where the mouse went down when a new selection was started (x). */
     private double anchorX;
+    /** Where the mouse went down when a new selection was started (y). */
     private double anchorY;
+    /** How far inside the selection the mouse grabbed it (x). */
     private double grabDx;
+    /** How far inside the selection the mouse grabbed it (y). */
     private double grabDy;
 
     /** The lifted-out pixels being moved or just pasted. Null when nothing is floating. */
@@ -161,6 +189,15 @@ public final class ImageCanvasTab {
         this(settings, file, image, image.getWidth(), image.getHeight());
     }
 
+    /**
+     * Does the real construction work for the public constructors.
+     *
+     * @param settings the shared toolbar settings
+     * @param file     the file the image came from, or null
+     * @param image    the image to draw first, or null for a blank canvas
+     * @param width    canvas width in pixels
+     * @param height   canvas height in pixels
+     */
     private ImageCanvasTab(ToolSettings settings, File file, Image image, double width, double height) {
         this.settings = settings;
         canvas = new Canvas(width, height);
@@ -330,18 +367,31 @@ public final class ImageCanvasTab {
         return (currentFile != null) ? currentFile.getName() : "new tab";
     }
 
-    /** Writes one line to the activity log, tagged with this tab's file name. */
+    /**
+     * Writes one line to the activity log, tagged with this tab's file name.
+     *
+     * @param message what happened
+     */
     private void log(String message) {
         settings.log(getLogName(), message);
     }
 
-    /** The current color, width and dash setting, as text for the log. */
+    /**
+     * Describes the current color, width and dash setting for the log.
+     *
+     * @return the description
+     */
     private String strokeDescription() {
         return "color " + hex(settings.getColor()) + ", width " + (int) settings.getLineWidth()
                 + (settings.isDashed() ? ", dashed" : "");
     }
 
-    /** A color as #RRGGBB. */
+    /**
+     * Writes a color as #RRGGBB.
+     *
+     * @param color the color
+     * @return the color as hex text
+     */
     private static String hex(Color color) {
         return String.format("#%02X%02X%02X",
                 (int) Math.round(color.getRed() * 255),
@@ -349,7 +399,13 @@ public final class ImageCanvasTab {
                 (int) Math.round(color.getBlue() * 255));
     }
 
-    /** Text for the log: a point as (x,y), rounded to whole pixels. */
+    /**
+     * Writes a point for the log as (x,y), rounded to whole pixels.
+     *
+     * @param x horizontal position
+     * @param y vertical position
+     * @return the point as text
+     */
     private static String at(double x, double y) {
         return "(" + Math.round(x) + "," + Math.round(y) + ")";
     }
@@ -620,12 +676,24 @@ public final class ImageCanvasTab {
         gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
     }
 
-    /** Takes a picture of the whole canvas as it looks right now. */
+    /**
+     * Takes a picture of the whole canvas as it looks right now.
+     *
+     * @return the picture
+     */
     private WritableImage snapshot() {
         return canvas.snapshot(null, null);
     }
 
-    /** Takes a picture of just one rectangle of the canvas. The rectangle must lie inside it. */
+    /**
+     * Takes a picture of just one rectangle of the canvas. The rectangle must lie inside it.
+     *
+     * @param x left edge
+     * @param y top edge
+     * @param w width
+     * @param h height
+     * @return the picture of that rectangle
+     */
     private WritableImage snapshotRegion(int x, int y, int w, int h) {
         SnapshotParameters params = new SnapshotParameters();
         params.setViewport(new Rectangle2D(x, y, w, h));
@@ -636,6 +704,8 @@ public final class ImageCanvasTab {
      * Replaces the canvas's contents with a picture. The canvas is cleared
      * first so any transparent parts of the picture do not show whatever
      * was drawn underneath them.
+     *
+     * @param picture what to draw
      */
     private void clearAndDraw(Image picture) {
         gc.clearRect(0, 0, canvas.getWidth(), canvas.getHeight());
@@ -646,6 +716,9 @@ public final class ImageCanvasTab {
      * Gives the canvas and its selection overlay a new size. Resizing a
      * canvas wipes it, so the caller draws the picture again afterwards.
      * Rotating by 90 or 270 degrees changes the size, and so does undoing it.
+     *
+     * @param width  the new width in pixels
+     * @param height the new height in pixels
      */
     private void resizeTo(int width, int height) {
         if (canvas.getWidth() != width || canvas.getHeight() != height) {
@@ -656,7 +729,11 @@ public final class ImageCanvasTab {
         }
     }
 
-    /** Puts an undo/redo snapshot back on the canvas and drops any selection. */
+    /**
+     * Puts an undo/redo snapshot back on the canvas and drops any selection.
+     *
+     * @param picture the snapshot to show
+     */
     private void restore(WritableImage picture) {
         resizeTo((int) picture.getWidth(), (int) picture.getHeight());
         clearAndDraw(picture);
@@ -916,6 +993,9 @@ public final class ImageCanvasTab {
      * Mouse pressed with the Select tool. Pressing inside the current
      * selection grabs it to be moved; pressing anywhere else puts down any
      * floating piece and starts a brand-new selection rectangle.
+     *
+     * @param x mouse x
+     * @param y mouse y
      */
     private void pressSelect(double x, double y) {
         boolean insideSelection = hasSelection
@@ -938,6 +1018,9 @@ public final class ImageCanvasTab {
      * rectangle live, or carries the selected piece along live. The piece is
      * not lifted out of the picture until the first actual movement, so a
      * plain click inside a selection changes nothing.
+     *
+     * @param x mouse x
+     * @param y mouse y
      */
     private void dragSelect(double x, double y) {
         if (selectDrag == SelectDrag.SELECTING) {
@@ -1056,7 +1139,13 @@ public final class ImageCanvasTab {
         overlayGc.strokeRect(selX + 0.5, selY + 0.5, selW - 1, selH - 1);
     }
 
-    /** Keeps a coordinate inside 0..max. */
+    /**
+     * Keeps a coordinate inside 0..max.
+     *
+     * @param value the coordinate
+     * @param max   the largest allowed value
+     * @return the coordinate, moved inside the range if needed
+     */
     private static double clamp(double value, double max) {
         return Math.max(0, Math.min(max, value));
     }

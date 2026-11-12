@@ -19,12 +19,18 @@ import javafx.scene.paint.Color;
  */
 public final class ColorNames {
 
-    // Utility class - nobody should be able to construct one of these.
+    /** Utility class - nobody should be able to construct one of these. */
     private ColorNames() {
     }
 
+    /** Every named color, built once when the class loads. */
     private static final Map<Color, String> NAMES = buildNames();
 
+    /**
+     * Builds the table of named colors.
+     *
+     * @return a map from color to its name
+     */
     private static Map<Color, String> buildNames() {
         // LinkedHashMap only because it makes debugging output predictable;
         // plain lookup order doesn't otherwise matter here.
@@ -117,9 +123,14 @@ public final class ColorNames {
         return nameOf(c) + "  ·  " + hex(c) + "  ·  " + rgb(c);
     }
 
-    // JavaFX Color channels are doubles from 0.0-1.0; ImageIO/most people
-    // think in 0-255. Math.round (not a plain cast) avoids 254 vs 255
-    // rounding surprises at the edges.
+    /**
+     * Converts a JavaFX channel (0.0 to 1.0) to the 0 to 255 range people
+     * use. Math.round (not a plain cast) avoids 254 vs 255 rounding
+     * surprises at the edges.
+     *
+     * @param channel a color channel from 0.0 to 1.0
+     * @return the channel from 0 to 255
+     */
     private static int to255(double channel) {
         return (int) Math.round(channel * 255.0);
     }

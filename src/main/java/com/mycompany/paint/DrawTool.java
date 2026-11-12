@@ -80,8 +80,14 @@ public enum DrawTool {
      */
     SELECT("Select (rectangle)");
 
+    /** The name shown in the Tool drop-down and in tooltips. */
     private final String displayName;
 
+    /**
+     * Creates a tool constant.
+     *
+     * @param displayName the name people see
+     */
     DrawTool(String displayName) {
         this.displayName = displayName;
     }

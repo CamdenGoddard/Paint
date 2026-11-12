@@ -117,6 +117,13 @@ final class ShapeDrawer {
      * Draws a regular polygon (all sides and angles equal) with the given
      * number of sides. With 3 sides this is an equilateral triangle, which
      * never has a right angle.
+     *
+     * @param gc the pen to draw with
+     * @param cx center x
+     * @param cy center y
+     * @param mouseX mouse x (sets the radius and first corner)
+     * @param mouseY mouse y
+     * @param sides number of sides
      */
     private static void drawRegularPolygon(GraphicsContext gc, double cx, double cy,
                                            double mouseX, double mouseY, int sides) {
@@ -130,6 +137,13 @@ final class ShapeDrawer {
      * Draws a star with the given number of points (4 or more) whose outer
      * points reach the edges of the given box, stretched to fit it so a wide
      * drag makes a wide star. See {@link Geometry#star} for the corner math.
+     *
+     * @param gc the pen to draw with
+     * @param x left edge of the box
+     * @param y top edge of the box
+     * @param w width of the box
+     * @param h height of the box
+     * @param points number of points
      */
     private static void drawStar(GraphicsContext gc, double x, double y,
                                  double w, double h, int points) {

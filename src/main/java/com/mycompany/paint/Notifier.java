@@ -16,7 +16,13 @@ import java.awt.image.BufferedImage;
  */
 final class Notifier {
 
+    /** Creates a notifier; the tray icon is made the first time a notification is shown. */
+    Notifier() {
+    }
+
+    /** The tray icon, once it has been created. */
     private TrayIcon trayIcon;
+    /** True after the first attempt to make the tray icon, so failure is not retried. */
     private boolean triedToStart;
 
     /**
@@ -34,7 +40,11 @@ final class Notifier {
         return true;
     }
 
-    /** @return true if notifications can be shown on this computer */
+    /**
+     * Tells whether notifications work on this computer.
+     *
+     * @return true if notifications can be shown on this computer
+     */
     synchronized boolean isAvailable() {
         return start();
     }
@@ -51,7 +61,11 @@ final class Notifier {
         }
     }
 
-    /** Creates the tray icon the first time it is needed. */
+    /**
+     * Creates the tray icon the first time it is needed.
+     *
+     * @return true if the tray icon is ready
+     */
     private boolean start() {
         if (trayIcon != null) {
             return true;
@@ -74,7 +88,11 @@ final class Notifier {
         }
     }
 
-    /** A small painted square, used as the tray icon. */
+    /**
+     * Draws a small painted square, used as the tray icon.
+     *
+     * @return the icon image
+     */
     private static BufferedImage makeIcon() {
         BufferedImage image = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
         java.awt.Graphics2D g = image.createGraphics();

@@ -1,0 +1,18 @@
+@startuml activity-save-as
+title Activity: Save As
+skinparam shadowing false
+start
+:Choose File > Save As;
+:Pick a file name;
+if (Format change could lose data?) then (yes)
+  :Show warning;
+  if (Save anyway?) then (no)
+    stop
+  else (yes)
+  endif
+else (no)
+endif
+:Write the file;
+:Reset autosave countdown;
+stop
+@enduml

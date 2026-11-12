@@ -14,6 +14,7 @@ import javafx.scene.shape.StrokeLineJoin;
  */
 final class ToolIcons {
 
+    /** Line color shared by every icon. */
     private static final Color LINE = Color.web("#2b2b2b");
 
     /** Utility class - nobody should construct one. */
@@ -63,61 +64,112 @@ final class ToolIcons {
         }
     }
 
-    /** Icon for the New Tab button. */
+    /**
+     * Icon for the New Tab button.
+     *
+     * @return the icon
+     */
     static Node newTab() {
         return icon("M5 2.5h10l5 5v14H5z M15 2.5v5h5");
     }
 
-    /** Icon for the Open button (a folder). */
+    /**
+     * Icon for the Open button (a folder).
+     *
+     * @return the icon
+     */
     static Node open() {
         return icon("M2.5 6h7l2 2h10v12h-19z");
     }
 
-    /** Icon for the Save button (a floppy disk). */
+    /**
+     * Icon for the Save button (a floppy disk).
+     *
+     * @return the icon
+     */
     static Node save() {
         return icon("M3 3h14l4 4v14H3z M7 3v6h9V3 M7 21v-7h10v7");
     }
 
-    /** Icon for Undo (an arrow curving back). */
+    /**
+     * Icon for Undo (an arrow curving back).
+     *
+     * @return the icon
+     */
     static Node undo() {
         return icon("M9 6L4 11l5 5 M4 11h10a5 5 0 0 1 0 10h-4");
     }
 
-    /** Icon for Redo (an arrow curving forward). */
+    /**
+     * Icon for Redo (an arrow curving forward).
+     *
+     * @return the icon
+     */
     static Node redo() {
         return icon("M15 6l5 5-5 5 M20 11H10a5 5 0 0 0 0 10h4");
     }
 
-    /** Icon for the rotate buttons: a circular arrow, with the angle written beside it by the button's text. */
+    /**
+     * Icon for the rotate buttons: a circular arrow, with the angle written beside it by the button's text.
+     *
+     * @return the icon
+     */
     static Node rotate() {
         return icon("M19.5 12a7.5 7.5 0 1 1-2.6-5.7 M19.5 3.5v5h-5");
     }
 
-    /** Icon for Flip Horizontal (left and right triangles mirrored across a line). */
+    /**
+     * Icon for Flip Horizontal (left and right triangles mirrored across a line).
+     *
+     * @return the icon
+     */
     static Node flipHorizontal() {
         return icon("M12 3v18 M9 7L3 12l6 5z M15 7l6 5-6 5z");
     }
 
-    /** Icon for Flip Vertical (top and bottom triangles mirrored across a line). */
+    /**
+     * Icon for Flip Vertical (top and bottom triangles mirrored across a line).
+     *
+     * @return the icon
+     */
     static Node flipVertical() {
         return icon("M3 12h18 M7 9l5-6 5 6z M7 15l5 6 5-6z");
     }
 
-    /** Icon for Clear Canvas (a trash can). */
+    /**
+     * Icon for Clear Canvas (a trash can).
+     *
+     * @return the icon
+     */
     static Node clear() {
         return icon("M4 7h16 M9 7V4h6v3 M6 7l1 14h10l1-14 M10 11v6 M14 11v6");
     }
 
-    /** Icon for the web server toggle (a globe). */
+    /**
+     * Icon for the web server toggle (a globe).
+     *
+     * @return the icon
+     */
     static Node web() {
         return icon("M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0 M3 12h18 M12 3c-4 4-4 14 0 18 M12 3c4 4 4 14 0 18");
     }
 
-    /** Builds one outline icon from path data. */
+    /**
+     * Builds one outline icon from path data.
+     *
+     * @param pathData SVG path text on a 24 by 24 grid
+     * @return the icon
+     */
     private static Node icon(String pathData) {
         return new Group(path(pathData));
     }
 
+    /**
+     * Makes one styled outline shape.
+     *
+     * @param pathData SVG path text
+     * @return a styled outline shape
+     */
     private static SVGPath path(String pathData) {
         SVGPath shape = new SVGPath();
         shape.setContent(pathData);
@@ -129,7 +181,12 @@ final class ToolIcons {
         return shape;
     }
 
-    /** Turns a list of corners into a closed path string. */
+    /**
+     * Turns a list of corners into a closed path string.
+     *
+     * @param corners {xs, ys} arrays of corner points
+     * @return the path text
+     */
     private static String pathOf(double[][] corners) {
         StringBuilder text = new StringBuilder();
         for (int i = 0; i < corners[0].length; i++) {

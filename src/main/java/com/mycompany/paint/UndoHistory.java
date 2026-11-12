@@ -25,10 +25,16 @@ import javafx.scene.image.WritableImage;
  */
 final class UndoHistory {
 
+    /** Creates an empty history. */
+    UndoHistory() {
+    }
+
     /** How many edits can be undone before the oldest ones are forgotten. */
     static final int MAX_UNDO_STEPS = 40;
 
+    /** Pictures to go back to, newest on top. */
     private final Deque<WritableImage> undoStack = new ArrayDeque<>();
+    /** Pictures undone and available to redo, newest on top. */
     private final Deque<WritableImage> redoStack = new ArrayDeque<>();
 
     /**

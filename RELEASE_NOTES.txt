@@ -1,7 +1,52 @@
-Camden's Pain(t)  Version 0.6.0  -  10/26/2026
-=============================================
+Camden's Pain(t)  Version 1.0.0 (final)  -  11/11/2026
+=====================================================
 
-Sprint 6 submission for CS 250.
+Final version for CS 250.
+
+Links:
+  GitHub repo (source as individual files):  https://github.com/CamdenGoddard/Paint
+  Release:  https://github.com/CamdenGoddard/Paint/releases/tag/v1.0.0
+  Demo video (all features):  https://screenrec.com/share/dG2AgNL8qi
+
+What is in the final version:
+  * Drawing: pencil, line, square, rectangle, circle, ellipse, triangle,
+    right triangle, polygon (any number of sides), star (any number of
+    points), eraser, color grabber, text.
+  * Select a rectangle and move, copy, cut and paste it. Undo and redo.
+  * Rotate 90/180/270 and mirror, for the whole canvas or a selection.
+  * Tabs for several pictures; open and save PNG, JPEG and BMP, with a
+    warning when changing format would lose data.
+  * Autosave with an optional countdown and operating-system notifications.
+  * Web server that shows the tabs you choose.
+  * Icon buttons, tooltips and keyboard shortcuts.
+  * Threaded activity log (PaintLog/paint-log.txt in the home folder).
+
+Changes since version 0.6.0:
+  * Added Javadoc for every class, field and method (no Javadoc warnings).
+  * Added UML diagrams and the generated Javadoc under docs/.
+  * No feature changes.
+
+How to run:
+  The jar needs JavaFX. With the JavaFX SDK unzipped, run:
+    java --module-path <path to javafx lib folder> --add-modules javafx.controls,javafx.swing -jar paint-1.0.0.jar
+  Or open the project in IntelliJ and run Main, or use: mvn javafx:run
+
+Tests:
+  38 JUnit tests in src/test/java. See TEST_PLAN.md for the demo steps.
+
+Known issues:
+  * After many rotates or flips the picture sometimes starts to fade (the
+    lines get lighter). It has not been tracked down yet.
+  * The activity log has no size limit.
+  * Notifications need a system tray and have only been tried on Windows.
+  * Rotating a selection by 90 or 270 degrees can push part of it off the
+    edge of the canvas, which crops it when it is put down.
+  * ImageCanvasTab.java and PaintApp.java are still large (about 1,000 lines
+    each) and could be split into smaller classes.
+
+---------------------------------------------------------------------
+
+Sprint 6 (version 0.6.0) notes, kept for reference:
 
 Source code:
   GitHub repo:  https://github.com/CamdenGoddard/Paint

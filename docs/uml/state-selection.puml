@@ -1,0 +1,9 @@
+@startuml state-selection
+title State: Select tool
+skinparam shadowing false
+[*] --> NoSelection
+NoSelection --> Selected : drag a rectangle
+Selected --> Floating : drag it (or rotate / flip)
+Floating --> NoSelection : click outside
+Selected --> NoSelection : click outside
+@enduml

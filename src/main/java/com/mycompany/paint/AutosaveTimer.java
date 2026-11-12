@@ -14,12 +14,18 @@ final class AutosaveTimer {
     /** Shortest interval allowed, in seconds. */
     static final int MIN_SECONDS = 5;
 
+    /** What to run when the countdown reaches zero. */
     private final Runnable onFire;
+    /** Seconds between autosaves. */
     private int intervalSeconds;
+    /** Seconds left in the current countdown. */
     private int remainingSeconds;
+    /** True while the countdown is active. */
     private boolean running;
 
     /**
+     * Creates a timer that is not running yet.
+     *
      * @param intervalSeconds seconds between autosaves (raised to {@link #MIN_SECONDS} if smaller)
      * @param onFire          what to do when the countdown reaches zero
      */
@@ -74,17 +80,29 @@ final class AutosaveTimer {
         return false;
     }
 
-    /** @return seconds left until the next autosave */
+    /**
+     * Tells how long until the next autosave.
+     *
+     * @return seconds left until the next autosave
+     */
     int getRemainingSeconds() {
         return remainingSeconds;
     }
 
-    /** @return the full interval in seconds */
+    /**
+     * Tells the length of one full countdown.
+     *
+     * @return the full interval in seconds
+     */
     int getIntervalSeconds() {
         return intervalSeconds;
     }
 
-    /** @return true while the countdown is active */
+    /**
+     * Tells whether the countdown is active.
+     *
+     * @return true while the countdown is active
+     */
     boolean isRunning() {
         return running;
     }

@@ -14,24 +14,43 @@ final class ImageTransforms {
 
     /** The ways a picture can be turned over or around. */
     enum Op {
+        /** A quarter turn clockwise. */
         ROTATE_90("Rotate 90°"),
+        /** A half turn. */
         ROTATE_180("Rotate 180°"),
+        /** Three quarter turns clockwise (one counterclockwise). */
         ROTATE_270("Rotate 270°"),
+        /** Mirror: left becomes right. */
         FLIP_HORIZONTAL("Flip horizontal"),
+        /** Mirror: top becomes bottom. */
         FLIP_VERTICAL("Flip vertical");
 
+        /** The text shown in menus and written to the log. */
         private final String label;
 
+        /**
+         * Creates an operation constant.
+         *
+         * @param label the text people see
+         */
         Op(String label) {
             this.label = label;
         }
 
-        /** @return the name shown in menus and written to the log */
+        /**
+         * Gives the operation's display name.
+         *
+         * @return the name shown in menus and written to the log
+         */
         String label() {
             return label;
         }
 
-        /** @return true if the result has its width and height swapped */
+        /**
+         * Tells whether this operation turns the picture on its side.
+         *
+         * @return true if the result has its width and height swapped
+         */
         boolean swapsSides() {
             return this == ROTATE_90 || this == ROTATE_270;
         }

@@ -62,6 +62,8 @@ final class ImageFormats {
     }
 
     /**
+     * Tells whether a format has no room for see-through pixels.
+     *
      * @param format a name from {@link #normalize}
      * @return true if the format cannot store transparent pixels
      */

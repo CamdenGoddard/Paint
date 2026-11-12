@@ -27,20 +27,32 @@ final class ImageWebServer {
 
     /** Where the server gets the images it shows. */
     interface ImageSource {
-        /** @return the names of the images currently shared, in display order */
+        /**
+         * Lists what is being shared.
+         *
+         * @return the names of the images currently shared, in display order
+         */
         List<String> names();
 
         /**
+         * Gets one shared image.
+         *
          * @param index position in {@link #names()}
          * @return the image as PNG bytes, or null if there is no such image
          */
         byte[] png(int index);
     }
 
+    /** Where the shared images come from. */
     private final ImageSource source;
+    /** The running server, or null while stopped. */
     private HttpServer server;
 
-    /** @param source where to get the shared images */
+    /**
+     * Creates a stopped server.
+     *
+     * @param source where to get the shared images
+     */
     ImageWebServer(ImageSource source) {
         this.source = source;
     }
@@ -71,17 +83,30 @@ final class ImageWebServer {
         }
     }
 
-    /** @return true while the server is listening */
+    /**
+     * Tells whether the server is up.
+     *
+     * @return true while the server is listening
+     */
     boolean isRunning() {
         return server != null;
     }
 
-    /** @return the port actually in use, or -1 when stopped */
+    /**
+     * Tells which port the server is using.
+     *
+     * @return the port actually in use, or -1 when stopped
+     */
     int getPort() {
         return (server == null) ? -1 : server.getAddress().getPort();
     }
 
-    /** Builds the home page: one picture per shared image, or a "nothing shared" note. */
+    /**
+     * Builds the home page: one picture per shared image, or a "nothing shared" note.
+     *
+     * @param exchange the request being answered
+     * @throws IOException if the reply cannot be sent
+     */
     private void handlePage(HttpExchange exchange) throws IOException {
         if (!exchange.getRequestURI().getPath().equals("/")) {
             send(exchange, 404, "text/plain; charset=utf-8", "Not found".getBytes(StandardCharsets.UTF_8));
@@ -119,7 +144,12 @@ final class ImageWebServer {
         return html.append("</body></html>").toString();
     }
 
-    /** Sends one picture as PNG, or a 404 if that number is not shared. */
+    /**
+     * Sends one picture as PNG, or a 404 if that number is not shared.
+     *
+     * @param exchange the request being answered
+     * @throws IOException if the reply cannot be sent
+     */
     private void handleImage(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
         byte[] bytes = null;
@@ -136,6 +166,15 @@ final class ImageWebServer {
         send(exchange, 200, "image/png", bytes);
     }
 
+    /**
+     * Sends one complete reply.
+     *
+     * @param exchange the request being answered
+     * @param status   the HTTP status code
+     * @param type     the content type header
+     * @param body     the bytes to send
+     * @throws IOException if the reply cannot be sent
+     */
     private static void send(HttpExchange exchange, int status, String type, byte[] body) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", type);
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
@@ -145,7 +184,12 @@ final class ImageWebServer {
         }
     }
 
-    /** Escapes the characters that mean something in HTML. */
+    /**
+     * Escapes the characters that mean something in HTML.
+     *
+     * @param text the plain text
+     * @return the text safe to put in a page
+     */
     static String escape(String text) {
         return text.replace("&", "&amp;").replace("<", "&lt;")
                 .replace(">", "&gt;").replace("\"", "&quot;");

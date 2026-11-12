@@ -1,0 +1,25 @@
+@startuml class-diagram
+title Camden's Pain(t) - main classes
+skinparam shadowing false
+hide members
+
+class PaintApp
+interface ToolSettings
+class ImageCanvasTab
+enum DrawTool
+class ShapeDrawer
+class UndoHistory
+class AutosaveTimer
+class ImageWebServer
+class ActionLogger
+
+PaintApp ..|> ToolSettings
+PaintApp "1" o-- "many" ImageCanvasTab
+ImageCanvasTab --> ToolSettings
+ImageCanvasTab --> DrawTool
+ImageCanvasTab *-- UndoHistory
+ImageCanvasTab --> ShapeDrawer
+PaintApp *-- AutosaveTimer
+PaintApp *-- ImageWebServer
+PaintApp *-- ActionLogger
+@enduml

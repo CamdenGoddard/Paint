@@ -25,15 +25,21 @@ import java.util.concurrent.LinkedBlockingQueue;
  */
 final class ActionLogger implements AutoCloseable {
 
+    /** Date format at the start of every log line. */
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("MM/dd/yyyy");
+    /** Time format in every log line. */
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     /** Put on the queue to tell the logger thread to finish. Compared by identity. */
     private static final String STOP = new String("<stop>");
 
+    /** Lines waiting to be written; the program adds, the logger thread takes. */
     private final BlockingQueue<String> queue = new LinkedBlockingQueue<>();
+    /** The text file the lines are appended to. */
     private final Path file;
+    /** The background thread that does all the writing. */
     private final Thread worker;
+    /** True once {@link #close()} has been called; later log calls are ignored. */
     private volatile boolean closed;
 
     /**
@@ -83,12 +89,20 @@ final class ActionLogger implements AutoCloseable {
         queue.add(formatLine(LocalDateTime.now(), fileName, message));
     }
 
-    /** @return the log file being written */
+    /**
+     * Gives the file this logger writes to.
+     *
+     * @return the log file being written
+     */
     Path getFile() {
         return file;
     }
 
-    /** @return the name of the thread that does the writing (never the caller's thread) */
+    /**
+     * Gives the name of the writing thread, which is never the caller's thread.
+     *
+     * @return the logger thread's name
+     */
     String getWorkerName() {
         return worker.getName();
     }

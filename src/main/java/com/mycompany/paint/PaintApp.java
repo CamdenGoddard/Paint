@@ -60,13 +60,15 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
 /**
- * Sprint 6: everything from Sprint 5 (a star with a chosen number of points,
- * an autosave timer with an optional countdown, a small web server, and a
- * warning when Save As would lose data) plus rotating and mirroring (the
- * whole canvas or just a selection), icon buttons and tooltips for the tools
- * and common actions, operating-system notifications for autosave, and an
- * activity log written by a background thread. See {@link ImageCanvasTab} for what
- * happens inside one tab, and {@link DrawTool} for what each tool does.
+ * The main window of Camden's Pain(t), a paint program with tabs. It has
+ * freehand and shape drawing tools (including polygons and stars), a color
+ * picker, undo and redo, rectangle select with copy, cut, paste and move,
+ * rotating and mirroring (the whole canvas or just a selection), saving in
+ * PNG, JPEG or BMP with a warning when a format change would lose data, an
+ * autosave timer with notifications, a small web server that shows chosen
+ * tabs, and an activity log written by a background thread. See
+ * {@link ImageCanvasTab} for what happens inside one tab, and
+ * {@link DrawTool} for what each tool does.
  *
  * <p>This class owns the toolbar controls and implements
  * {@link ToolSettings} so every open tab can read them without needing to
@@ -76,40 +78,68 @@ import javafx.stage.Stage;
  */
 public class PaintApp extends Application implements ToolSettings {
 
+    /** The open pictures, one tab each. */
     private final TabPane tabPane = new TabPane();
+    /** Drop-down for choosing the drawing tool. */
     private final ComboBox<DrawTool> toolSelector =
             new ComboBox<>(FXCollections.observableArrayList(DrawTool.values()));
+    /** Picks the drawing color. */
     private final ColorPicker colorPicker = new ColorPicker(Color.BLACK);
+    /** Shows the current color's name, hex and RGB values. */
     private final Label colorInfoLabel = new Label();
+    /** Sets the line width. */
     private final Slider widthSlider = new Slider(1, 20, 3);
+    /** Shows the current line width. */
     private final Label widthLabel = new Label();
+    /** Draws lines and outlines dashed. */
     private final CheckBox dashedCheckBox = new CheckBox("Dashed");
+    /** Number of sides for the polygon tool. */
     private final Spinner<Integer> sidesSpinner = makeIntSpinner(3, 100, 5);
+    /** The words the Text tool stamps onto the picture. */
     private final TextField textField = new TextField();
+    /** Font size for the Text tool. */
     private final Spinner<Integer> fontSizeSpinner = makeIntSpinner(6, 300, 32);
+    /** Number of points for the star tool. */
     private final Spinner<Integer> starPointsSpinner = makeIntSpinner(Geometry.MIN_STAR_POINTS, 100, 5);
 
+    /** Turns autosave on and off. */
     private final CheckBox autosaveCheckBox = new CheckBox("Autosave every");
+    /** Seconds between autosaves. */
     private final Spinner<Integer> autosaveSecondsSpinner = makeIntSpinner(AutosaveTimer.MIN_SECONDS, 3600, 60);
+    /** Shows or hides the autosave countdown. */
     private final CheckBox showCountdownCheckBox = new CheckBox("Show countdown");
+    /** Shows the seconds left until the next autosave. */
     private final Label countdownLabel = new Label();
+    /** Says what autosave last did. */
     private final Label autosaveStatusLabel = new Label();
+    /** The countdown logic behind autosave. */
     private final AutosaveTimer autosaveTimer =
             new AutosaveTimer(60, this::autosaveAllTabs);
+    /** Ticks once a second to drive the autosave timer. */
     private final Timeline autosaveClock = new Timeline(
             new KeyFrame(Duration.seconds(1), event -> tickAutosave()));
 
+    /** Turns operating-system notifications on and off. */
     private final CheckBox notifyCheckBox = new CheckBox("Notifications");
+    /** Shows the operating-system notifications. */
     private final Notifier notifier = new Notifier();
+    /** Writes the activity log on its own thread. */
     private ActionLogger logger;
 
+    /** Makes the tool buttons act like radio buttons. */
     private final ToggleGroup toolGroup = new ToggleGroup();
+    /** The icon button for each tool. */
     private final Map<DrawTool, ToggleButton> toolButtons = new EnumMap<>(DrawTool.class);
 
+    /** Starts and stops the web server. */
     private final CheckBox webServerCheckBox = new CheckBox("Web server on port");
+    /** Port the web server listens on. */
     private final Spinner<Integer> webPortSpinner = makeIntSpinner(1024, 65535, 8080);
+    /** Shares or unshares the current tab on the web server. */
     private final CheckBox shareTabCheckBox = new CheckBox("Share this tab");
+    /** Shows the address of the running web server. */
     private final Label webLinkLabel = new Label();
+    /** The web server that shows the shared tabs. */
     private final ImageWebServer webServer = new ImageWebServer(new ImageWebServer.ImageSource() {
         @Override
         public List<String> names() {
@@ -131,6 +161,7 @@ public class PaintApp extends Application implements ToolSettings {
         }
     });
 
+    /** The main window. */
     private Stage window;
 
     /** Required by JavaFX - the real setup happens in {@link #start}, once the toolkit is ready. */
@@ -155,7 +186,7 @@ public class PaintApp extends Application implements ToolSettings {
         updateWidthLabel();
         updateColorLabel();
 
-        addNewTab(); // start with one blank canvas, same as Sprint 1/2 did
+        addNewTab(); // a window always starts with one blank canvas
 
         FlowPane toolPalette = buildToolPalette();
         toolPalette.setPadding(new Insets(5, 5, 2, 5));
@@ -292,6 +323,11 @@ public class PaintApp extends Application implements ToolSettings {
      * also commits it on focus loss - otherwise clicking straight onto the
      * canvas after typing a number would leave the old number in use. Text
      * that is not a number reverts to the last good value.
+     *
+     * @param min smallest value
+     * @param max largest value
+     * @param initial starting value
+     * @return an editable whole-number spinner
      */
     private static Spinner<Integer> makeIntSpinner(int min, int max, int initial) {
         Spinner<Integer> spinner = new Spinner<>(min, max, initial);
@@ -324,7 +360,11 @@ public class PaintApp extends Application implements ToolSettings {
     // Menu bar and keyboard shortcuts
     // ------------------------------------------------------------------
 
-    /** Builds the File, Edit, Image and Help menus, with keyboard shortcuts on their items. */
+    /**
+     * Builds the File, Edit, Image and Help menus, with keyboard shortcuts on their items.
+     *
+     * @return the menu bar
+     */
     private MenuBar makeMenuBar() {
         Menu fileMenu = new Menu("File");
         fileMenu.getItems().addAll(
@@ -400,6 +440,7 @@ public class PaintApp extends Application implements ToolSettings {
      * @param text   the item's label
      * @param keys   its keyboard shortcut, or null for none
      * @param action what it does
+     * @return the new menu item
      */
     private MenuItem menuItem(String menu, String text, KeyCombination keys, Runnable action) {
         MenuItem item = new MenuItem(text);
@@ -413,10 +454,22 @@ public class PaintApp extends Application implements ToolSettings {
         return item;
     }
 
+    /**
+     * Builds a Ctrl+key shortcut.
+     *
+     * @param key the key
+     * @return Ctrl plus the key
+     */
     private static KeyCombination ctrl(KeyCode key) {
         return new KeyCodeCombination(key, KeyCombination.CONTROL_DOWN);
     }
 
+    /**
+     * Builds a Ctrl+Shift+key shortcut.
+     *
+     * @param key the key
+     * @return Ctrl+Shift plus the key
+     */
     private static KeyCombination ctrlShift(KeyCode key) {
         return new KeyCodeCombination(key, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN);
     }
@@ -425,7 +478,11 @@ public class PaintApp extends Application implements ToolSettings {
     // Toolbar buttons with icons, and tooltips
     // ------------------------------------------------------------------
 
-    /** One icon button per drawing tool. They and the Tool drop-down always show the same tool. */
+    /**
+     * One icon button per drawing tool. They and the Tool drop-down always show the same tool.
+     *
+     * @return the row of tool buttons
+     */
     private FlowPane buildToolPalette() {
         FlowPane palette = new FlowPane(4, 4);
         for (DrawTool tool : DrawTool.values()) {
@@ -451,7 +508,11 @@ public class PaintApp extends Application implements ToolSettings {
         return palette;
     }
 
-    /** A row of buttons for the common actions, each with an icon and a short label. */
+    /**
+     * A row of buttons for the common actions, each with an icon and a short label.
+     *
+     * @return the row of action buttons
+     */
     private FlowPane buildActionBar() {
         FlowPane bar = new FlowPane(4, 4);
         bar.getChildren().addAll(
@@ -482,7 +543,15 @@ public class PaintApp extends Application implements ToolSettings {
         return bar;
     }
 
-    /** Makes one action button; clicking it writes a log line and then runs the action. */
+    /**
+     * Makes one action button; clicking it writes a log line and then runs the action.
+     *
+     * @param text the label
+     * @param icon the icon
+     * @param tooltip the hover tip
+     * @param action what to do when clicked
+     * @return the new button
+     */
     private Button actionButton(String text, Node icon, String tooltip, Runnable action) {
         Button button = new Button(text, icon);
         button.setOnAction(event -> {
@@ -493,7 +562,12 @@ public class PaintApp extends Application implements ToolSettings {
         return button;
     }
 
-    /** Shows a tooltip when the mouse rests on the control. */
+    /**
+     * Shows a tooltip when the mouse rests on the control.
+     *
+     * @param node the control
+     * @param text the tip to show on hover
+     */
     private static void setTip(Node node, String text) {
         Tooltip tip = new Tooltip(text);
         tip.setShowDelay(Duration.millis(300));
@@ -525,12 +599,20 @@ public class PaintApp extends Application implements ToolSettings {
     // Rotating and flipping
     // ------------------------------------------------------------------
 
-    /** Turns or mirrors the whole canvas of the active tab. */
+    /**
+     * Turns or mirrors the whole canvas of the active tab.
+     *
+     * @param op the rotation or flip
+     */
     private void applyToCanvas(ImageTransforms.Op op) {
         activeTab().transformCanvas(op);
     }
 
-    /** Turns or mirrors the selected piece of the active tab, or explains how to select one. */
+    /**
+     * Turns or mirrors the selected piece of the active tab, or explains how to select one.
+     *
+     * @param op the rotation or flip
+     */
     private void applyToSelection(ImageTransforms.Op op) {
         if (!activeTab().hasSelection()) {
             showMessage("Nothing is selected. Pick the Select tool and drag a box around part of the picture first.");
@@ -539,7 +621,11 @@ public class PaintApp extends Application implements ToolSettings {
         activeTab().transformSelection(op);
     }
 
-    /** What the toolbar buttons do: the selection if there is one, otherwise the whole canvas. */
+    /**
+     * What the toolbar buttons do: the selection if there is one, otherwise the whole canvas.
+     *
+     * @param op the rotation or flip
+     */
     private void applySmart(ImageTransforms.Op op) {
         if (activeTab().hasSelection()) {
             activeTab().transformSelection(op);
@@ -559,7 +645,11 @@ public class PaintApp extends Application implements ToolSettings {
         }
     }
 
-    /** Logs something the user did in the toolbar or menus, under the active tab's file name. */
+    /**
+     * Logs something the user did in the toolbar or menus, under the active tab's file name.
+     *
+     * @param message what happened
+     */
     private void logUi(String message) {
         Tab selected = tabPane.getSelectionModel().getSelectedItem();
         String name = (selected == null) ? "new tab" : ((ImageCanvasTab) selected.getUserData()).getLogName();
@@ -634,7 +724,11 @@ public class PaintApp extends Application implements ToolSettings {
         return imageTab;
     }
 
-    /** Wires up close behavior, adds the tab to the TabPane, and selects it. */
+    /**
+     * Wires up close behavior, adds the tab to the TabPane, and selects it.
+     *
+     * @param imageTab the tab to add
+     */
     private void registerTab(ImageCanvasTab imageTab) {
         wireTabCloseRequest(imageTab);
         tabPane.getTabs().add(imageTab.getTab());
@@ -650,6 +744,8 @@ public class PaintApp extends Application implements ToolSettings {
      * unsaved-changes check as File > Close Image, instead of just
      * closing immediately. This is the one place that logic lives -
      * {@link #closeCurrentImage()} below reuses it.
+     *
+     * @param imageTab the tab to watch
      */
     private void wireTabCloseRequest(ImageCanvasTab imageTab) {
         imageTab.getTab().setOnCloseRequest(event -> {
@@ -659,6 +755,8 @@ public class PaintApp extends Application implements ToolSettings {
     }
 
     /**
+     * Finds the picture in the selected tab.
+     *
      * @return the {@link ImageCanvasTab} behind whichever tab is currently selected
      */
     private ImageCanvasTab activeTab() {
@@ -667,6 +765,8 @@ public class PaintApp extends Application implements ToolSettings {
     }
 
     /**
+     * Checks every open tab, not just the current one.
+     *
      * @return true if any open tab - not just the current one - has unsaved changes
      */
     private boolean anyUnsavedChanges() {
@@ -684,8 +784,8 @@ public class PaintApp extends Application implements ToolSettings {
 
     /**
      * Lets the user pick an image file and opens it into a brand new tab,
-     * leaving every already-open tab untouched - so unlike Sprint 2,
-     * there's nothing to lose here and nothing to confirm first.
+     * leaving every already-open tab untouched, so there is nothing to
+     * lose here and nothing to confirm first.
      */
     private void openImage() {
         FileChooser chooser = new FileChooser();
@@ -793,6 +893,9 @@ public class PaintApp extends Application implements ToolSettings {
      * Runs {@link ImageCanvasTab#writeToFile}, shows an error message if it
      * fails, and restarts the autosave countdown when it works (the picture
      * was just saved, so there is nothing for autosave to do yet).
+     *
+     * @param tab the tab to save
+     * @param file where to save it
      */
     private void writeAndReport(ImageCanvasTab tab, File file) {
         try {
@@ -832,7 +935,11 @@ public class PaintApp extends Application implements ToolSettings {
         }
     }
 
-    /** The shared logic behind both File > Close Image and a tab's own close button. */
+    /**
+     * The shared logic behind both File > Close Image and a tab's own close button.
+     *
+     * @param imageTab the tab to close
+     */
     private void closeImageTab(ImageCanvasTab imageTab) {
         if (imageTab.isUnsaved() && !confirmDiscard("closing this image")) {
             log(imageTab.getLogName(), "Close cancelled (unsaved changes kept)");
@@ -966,7 +1073,11 @@ public class PaintApp extends Application implements ToolSettings {
                 shareTabCheckBox.setSelected(newTab != null && ((ImageCanvasTab) newTab.getUserData()).isShared()));
     }
 
-    /** @return the tabs the user chose to share, in tab order. Call on the JavaFX thread. */
+    /**
+     * Finds the tabs the user chose to share, in tab order. Call on the JavaFX thread.
+     *
+     * @return the tabs the user chose to share, in tab order. Call on the JavaFX thread.
+     */
     private List<ImageCanvasTab> sharedTabs() {
         List<ImageCanvasTab> shared = new ArrayList<>();
         for (Tab tab : tabPane.getTabs()) {
@@ -986,6 +1097,7 @@ public class PaintApp extends Application implements ToolSettings {
      * @param job      what to run
      * @param fallback the answer to give if the job fails or takes too long
      * @return the job's result, or the fallback
+     * @param <T> the type of result
      */
     private static <T> T onFxThread(Callable<T> job, T fallback) {
         try {
@@ -1084,7 +1196,11 @@ public class PaintApp extends Application implements ToolSettings {
         aboutStage.show();
     }
 
-    /** Shows a plain informational popup with the given message. */
+    /**
+     * Shows a plain informational popup with the given message.
+     *
+     * @param text the message to show
+     */
     private void showMessage(String text) {
         Alert alert = new Alert(AlertType.INFORMATION);
         alert.setHeaderText(null);

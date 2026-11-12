@@ -9,4 +9,6 @@ Sprint 4: undo/redo (stack-based), clear canvas with an "are you sure" check, ri
 Sprint 5: unit tests, star with a chosen number of points, autosave timer with optional countdown, web server that shows chosen tabs, and a data-loss warning when saving in a different format (see `TEST_PLAN.md`).
 Sprint 6: rotate and mirror (whole canvas or a selection), icon buttons and tooltips, keyboard shortcuts, operating-system notifications for autosave, and a threaded activity log.
 
+Final version (1.0.0): Javadoc for the whole program, UML diagrams, and generated Javadoc (see `docs/`).
+
 See `RELEASE_NOTES.txt` for details, including the critique.
